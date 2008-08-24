@@ -1,0 +1,84 @@
+<html>
+<head> 
+<title>Welcome to pyHealthVault - A Python Interface to HealthVault </title>
+</head>
+<body>
+
+<center><h2>Sample HealthVault Web App using pyHealthVault</h2></center>
+<h3>Read Basic Demographic Information</h3>
+
+<h4>HealthVault App <a href="{{loginurl}}">Login URL</a> 
+
+<br/>
+<br/>
+
+<table border="1">
+<th colspan="3">pyHealthVault Configuration Variables (in Django settings.py)</th>
+<tr>
+	<td>pyHealthVault Parameter</td>
+	<td>Value</td>
+	<td>Description</td>
+</tr>
+<tr>
+<td> HV_APPID </td>
+<td> {{HV_APPID}} </td>
+<td>
+<small>From the Health and Fitness sample application. <a href="http://msdn.microsoft.com/en-us/healthvault/bb898878.aspx">Create your own</a></small>
+</td>
+</tr>
+
+<tr>
+<td> HV_SHELL_URL </td>
+<td> {{HV_SHELL_URL}} </td>
+<td>
+<small>Development shell url. <a href="http://msdn.microsoft.com/en-us/healthvault/cc135971.aspx">More...</a> </small>
+</td>
+</tr>
+
+<tr>
+<td> HV_SERVICE_SERVER </td>
+<td> {{HV_SERVICE_SERVER}} </td>
+<td>
+<small>Development service url <a href="http://msdn.microsoft.com/en-us/healthvault/cc135971.aspx">More...</a> </small>
+</td>
+</tr>
+
+<tr>
+<td> APP_ACTION_URL </td>
+<td> {{APP_ACTION_URL}} </td>
+<td>
+<small>The action url that will read the 'target' variable and take appropriate action.<a href="http://msdn.microsoft.com/en-us/healthvault/bb852205.aspx">More...</a> </small>
+</td>
+</tr>
+
+<tr>
+<td> APP_PUBLIC_KEY </td>
+<td> {{APP_PUBLIC_KEY}} </td>
+<td>
+<small>The Health and Fitness App public key in hex <a href="http://msdn.microsoft.com/en-us/healthvault/bb814945.aspx">More...</a> To get the pem/hex from pfx use <a href="http://www.madboa.com/geek/openssl/#cert-pkcs12">openssl utility</a> </small>
+</td>
+</tr>
+
+<tr>
+<td> APP_PRIVATE_KEY </td>
+<td> {{APP_PRIVATE_KEY}} </td>
+<td>
+<small>The Health and Fitness App private key in hex <a href="http://msdn.microsoft.com/en-us/healthvault/bb814945.aspx">More...</a> To get the pem/hex from pfx use <a href="http://www.madboa.com/geek/openssl/#cert-pkcs12">openssl utility</a> </small>
+</td>
+</tr>
+
+<tr>
+<td> APP_THUMBPRINT </td>
+<td> {{APP_THUMBPRINT}} </td>
+<td>
+<small>
+On a Windows box double click to install PFX.
+Thumbprint is in the Control Panel => Internet Options => Content=> Certificates => View 
+</small>
+</td>
+</tr>
+
+
+</table>
+</body>
+</html>
