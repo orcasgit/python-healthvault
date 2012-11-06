@@ -26,40 +26,41 @@ from binascii import a2b_hex, b2a_hex
 from settings import *
 
 class HVCrypto(object):
-	em  		= None
-	private_key	= None
-	def __init__(self):
-		public_key_long 	= long(APP_PUBLIC_KEY,16)
-  		private_key_long 	= long(APP_PRIVATE_KEY,16)
-  		rsa_n_bit_length 	= 2048 
-  		self.em 		= (rsa_n_bit_length + 7)/8
-  		#['n', 'e', 'd', 'p', 'q', 'u']
-		exponent = 65537
-  		self.private_key = RSA.construct((public_key_long, exponent, private_key_long))
+    em = None
+    private_key = None
 
-	def i2osp(self,long_integer, block_size ):
-		'Convert a long integer into an octet string.'
-		hex_string = '%X' % long_integer
-		if len( hex_string ) > 2 * block_size:
-			raise ValueError( 'integer %i too large to encode in %i octets' % ( long_integer, block_size ) )
-		return a2b_hex( hex_string.zfill( 2 * block_size ) )
+    def __init__(self):
+        public_key_long = long(APP_PUBLIC_KEY, 16)
+        private_key_long = long(APP_PRIVATE_KEY, 16)
+        rsa_n_bit_length = 2048
+        self.em = (rsa_n_bit_length + 7) / 8
+        #['n', 'e', 'd', 'p', 'q', 'u']
+        exponent = 65537
+        self.private_key = RSA.construct((public_key_long, exponent, private_key_long))
 
-	def os2ip(self,octet_string ):
-	  'Convert an octet string to a long integer.'
-	  return long( b2a_hex( octet_string ), 16 )
+    def i2osp(self, long_integer, block_size ):
+        'Convert a long integer into an octet string.'
+        hex_string = '%X' % long_integer
+        if len(hex_string) > 2 * block_size:
+            raise ValueError('integer %i too large to encode in %i octets' % ( long_integer, block_size ))
+        return a2b_hex(hex_string.zfill(2 * block_size))
 
-	def pad_rsa(self,hashed_msg):        
-		#this is for PKCS#1 padding        
-		prefix          = '\x30\x21\x30\x09\x06\x05\x2b\x0E\x03\x02\x1A\x05\x00\x04\x14'
-		padlen          =  self.em - len(prefix) - len(hashed_msg) - 3
-		padding         = ''.join(['\xff' for x in range(padlen)])
-		pad_result      = ''.join(['\x00\x01', padding, '\x00', prefix, hashed_msg])
-		return pad_result
+    def os2ip(self, octet_string ):
+        'Convert an octet string to a long integer.'
+        return long(b2a_hex(octet_string), 16)
 
-	def sign(self,data2sign):
-	   hashed_msg    = hashlib.sha1(data2sign).digest()
-	   pad_result    = self.pad_rsa(hashed_msg)
-	   sig           = self.private_key.sign(self.os2ip(pad_result), None)[0]
-	   bsig          = base64.encodestring(self.i2osp(sig,self.em))
-	   return bsig
+    def pad_rsa(self, hashed_msg):
+        #this is for PKCS#1 padding
+        prefix = '\x30\x21\x30\x09\x06\x05\x2b\x0E\x03\x02\x1A\x05\x00\x04\x14'
+        padlen = self.em - len(prefix) - len(hashed_msg) - 3
+        padding = ''.join(['\xff' for x in range(padlen)])
+        pad_result = ''.join(['\x00\x01', padding, '\x00', prefix, hashed_msg])
+        return pad_result
+
+    def sign(self, data2sign):
+        hashed_msg = hashlib.sha1(data2sign).digest()
+        pad_result = self.pad_rsa(hashed_msg)
+        sig = self.private_key.sign(self.os2ip(pad_result), None)[0]
+        bsig = base64.encodestring(self.i2osp(sig, self.em))
+        return bsig
 
