@@ -23,7 +23,7 @@ import base64
 import hashlib
 from Crypto.PublicKey import RSA
 from binascii import a2b_hex, b2a_hex
-from settings import *
+from settings import APP_PUBLIC_KEY, APP_PRIVATE_KEY
 
 class HVCrypto(object):
     em = None

@@ -27,7 +27,7 @@ from xml.dom import minidom
 import hmac
 import httplib
 from healthvaultlib.hvcrypto import HVCrypto
-from settings import *
+from settings import HV_APPID, APP_THUMBPRINT, HV_SERVICE_SERVER
 
 class HealthVaultConn(object):
     wctoken = None
