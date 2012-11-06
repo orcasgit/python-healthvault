@@ -9,5 +9,5 @@ setup(
     author='Dan Poirier and Caktus Group',
     author_email='dpoirier@caktusgroup.com',
     description='Python library to access Microsoft Healthvault',
-    requires=['pycrypto>=2.6']
+    requires=['pycrypto>=2.6', 'sphinx']
 )
