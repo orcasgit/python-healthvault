@@ -21,35 +21,42 @@
 
 import base64
 import hashlib
-import socket
-from random import randint
-from xml.dom import minidom
 import hmac
 import httplib
+from random import randint
+import socket
+from xml.dom import minidom
+
 from healthvaultlib.hvcrypto import HVCrypto
-from settings import HV_APPID, APP_THUMBPRINT, HV_SERVICE_SERVER
+
 
 class HealthVaultConn(object):
-    wctoken = None
-    auth_token = None
-    sharedsec = None
-    signature = None
-    crypto = None
-    record_id = None
+#    wctoken = None
+#    auth_token = None
+#    sharedsec = None
+#    signature = None
+#    crypto = None
+#    record_id = None
 
-    def __init__(self, wctoken):
-        self.wctoken = wctoken
-        crypto = HVCrypto()
+    def __init__(self, config):
+        self.wctoken = config['WCTOKEN']
+
+        self.HV_APPID = config['HV_APPID']
+        self.APP_THUMBPRINT = config['APP_THUMBPRINT']
+        self.server = config.get('HV_SERVICE_SERVER', 'platform.healthvault-ppe.com')
+
+        crypto = HVCrypto(config['PUBLIC_KEY'], config['PRIVATE_KEY'])
+
         sharedsec = str(randint(2 ** 64, 2 ** 65 - 1))
         self.sharedsec = sharedsec
         sharedsec64 = base64.encodestring(sharedsec)
         #2. create content with shared sec
-        content = '<content><app-id>' + HV_APPID + '</app-id><shared-secret><hmac-alg algName="HMACSHA1">' + sharedsec64 + '</hmac-alg></shared-secret></content>'
+        content = '<content><app-id>' + self.HV_APPID + '</app-id><shared-secret><hmac-alg algName="HMACSHA1">' + sharedsec64 + '</hmac-alg></shared-secret></content>'
         #3. create header
-        header = "<header><method>CreateAuthenticatedSessionToken</method><method-version>1</method-version><app-id>" + HV_APPID + "</app-id><language>en</language><country>US</country><msg-time>2008-06-21T03:13:50.750-04:00</msg-time><msg-ttl>36000</msg-ttl><version>0.0.0.1</version></header>"
+        header = "<header><method>CreateAuthenticatedSessionToken</method><method-version>1</method-version><app-id>" + self.HV_APPID + "</app-id><language>en</language><country>US</country><msg-time>2008-06-21T03:13:50.750-04:00</msg-time><msg-ttl>36000</msg-ttl><version>0.0.0.1</version></header>"
         self.signature = crypto.sign(content)
         #4. create info with signed content
-        info = '<info><auth-info><app-id>' + HV_APPID + '</app-id><credential><appserver><sig digestMethod="SHA1" sigMethod="RSA-SHA1" thumbprint="' + APP_THUMBPRINT + '">' + self.signature + '</sig>' + content + '</appserver></credential></auth-info></info>'
+        info = '<info><auth-info><app-id>' + self.HV_APPID + '</app-id><credential><appserver><sig digestMethod="SHA1" sigMethod="RSA-SHA1" thumbprint="' + self.APP_THUMBPRINT + '">' + self.signature + '</sig>' + content + '</appserver></credential></auth-info></info>'
         payload = '<wc-request:request xmlns:wc-request="urn:com.microsoft.wc.request">' + header + info + '</wc-request:request>'
         extra_headers = {'Content-type': 'text/xml'}
         response = self.sendRequest(payload)
@@ -60,6 +67,8 @@ class HealthVaultConn(object):
                 self.auth_token = node.firstChild.nodeValue.strip()
         else:
             return "error occured at get auth token"
+
+        print auth_response
 
         #5 After you get the auth_token.. get the record id
         header = '<header><method>GetPersonInfo</method><method-version>1</method-version><auth-session><auth-token>' + self.auth_token + '</auth-token><user-auth-token>' + self.wctoken + '</user-auth-token></auth-session><language>en</language><country>US</country><msg-time>2008-06-21T03:13:50.750-04:00</msg-time><msg-ttl>36000</msg-ttl><version>0.0.0.1</version>'
@@ -83,7 +92,7 @@ class HealthVaultConn(object):
             return "error occured at select record id"
 
     def sendRequest(self, payload):
-        conn = httplib.HTTPSConnection(HV_SERVICE_SERVER, 443)
+        conn = httplib.HTTPSConnection(self.server, 443)
         conn.putrequest('POST', '/platform/wildcat.ashx')
         conn.putheader('Content-Type', 'text/xml')
         conn.putheader('Content-Length', '%d' % len(payload))
@@ -111,7 +120,7 @@ class HealthVaultConn(object):
         info = '<info><group><filter><type-id>' + hv_datatype + '</type-id></filter><format><section>core</section><xml/></format></group></info>'
 
         # INFO TO ADD WEIGHT.. change METHOD in header to PutThings
-        #info		= '<info> <thing><type-id>3d34d87e-7fc1-4153-800f-f56592cb0d17</type-id><data-xml><weight><when><date><y>2008</y><m>6</m><d>15</d></date><time><h>10</h><m>23</m><s>10</s></time></when><value><kg>60</kg><display units="lb" units-code="lb">120</display></value></weight><common/> </data-xml> </thing> </info>'
+        #info = '<info> <thing><type-id>3d34d87e-7fc1-4153-800f-f56592cb0d17</type-id><data-xml><weight><when><date><y>2008</y><m>6</m><d>15</d></date><time><h>10</h><m>23</m><s>10</s></time></when><value><kg>60</kg><display units="lb" units-code="lb">120</display></value></weight><common/> </data-xml> </thing> </info>'
 
         infodigest = base64.encodestring(hashlib.sha1(info).digest())
         headerinfo = '<info-hash><hash-data algName="SHA1">' + infodigest.strip() + '</hash-data></info-hash>'
@@ -132,7 +141,9 @@ class HealthVaultConn(object):
         gender = ''
         dob = ''
         if response.status == 200:
-            dom = minidom.parseString(response.read())
+            body = response.read()
+            print body
+            dom = minidom.parseString(body)
             for node in dom.getElementsByTagName("gender"):
                 gender = node.firstChild.nodeValue
             for node in dom.getElementsByTagName("birthyear"):
@@ -140,4 +151,3 @@ class HealthVaultConn(object):
             return gender + ' ' + dob
         else:
             return 'error in getting basic demographic info'
-

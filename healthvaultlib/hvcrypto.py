@@ -23,19 +23,30 @@ import base64
 import hashlib
 from Crypto.PublicKey import RSA
 from binascii import a2b_hex, b2a_hex
-from settings import APP_PUBLIC_KEY, APP_PRIVATE_KEY
 
 class HVCrypto(object):
+    """Internal class handling crypto.
+
+    :param APP_PUBLIC_KEY: A hex string or a long containing the bare public key.
+    :param APP_PRIVATE_KEY: A hex string or a long containing the bare private key.
+    """
+
     em = None
     private_key = None
 
-    def __init__(self):
-        public_key_long = long(APP_PUBLIC_KEY, 16)
-        private_key_long = long(APP_PRIVATE_KEY, 16)
+    def __init__(self, APP_PUBLIC_KEY, APP_PRIVATE_KEY):
+        if isinstance(APP_PUBLIC_KEY, basestring):
+            public_key_long = long(APP_PUBLIC_KEY, 16)
+        else:
+            public_key_long = APP_PUBLIC_KEY
+        if isinstance(APP_PRIVATE_KEY, basestring):
+            private_key_long = long(APP_PRIVATE_KEY, 16)
+        else:
+            private_key_long = APP_PRIVATE_KEY
         rsa_n_bit_length = 2048
         self.em = (rsa_n_bit_length + 7) / 8
         #['n', 'e', 'd', 'p', 'q', 'u']
-        exponent = 65537
+        exponent = 65537l
         self.private_key = RSA.construct((public_key_long, exponent, private_key_long))
 
     def i2osp(self, long_integer, block_size ):
