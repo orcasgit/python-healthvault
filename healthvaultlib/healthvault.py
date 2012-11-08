@@ -23,12 +23,24 @@ import base64
 import hashlib
 import hmac
 import httplib
+import logging
 from random import randint
 import socket
 from xml.dom import minidom
+import datetime
 
 from healthvaultlib.hvcrypto import HVCrypto
 
+
+logger = logging.getLogger(__name__)
+
+
+def _msg_time():
+    """Return value to use as `msg-time` in a request.
+            # dateTime format: see <http://msdn.microsoft.com/en-us/library/ms256220.aspx>
+        # CCYY-MM-DDThh:mm:ss
+    """
+    return datetime.datetime.now().strftime("%Y-%m-%dT%H:%m:%S")
 
 class HealthVaultConn(object):
 #    wctoken = None
@@ -66,12 +78,19 @@ class HealthVaultConn(object):
             for node in dom.getElementsByTagName("token"):
                 self.auth_token = node.firstChild.nodeValue.strip()
         else:
-            return "error occured at get auth token"
+            raise Exception("error occured at get auth token")
 
-        print auth_response
+        logger.debug("auth_response: %s", auth_response)
 
         #5 After you get the auth_token.. get the record id
-        header = '<header><method>GetPersonInfo</method><method-version>1</method-version><auth-session><auth-token>' + self.auth_token + '</auth-token><user-auth-token>' + self.wctoken + '</user-auth-token></auth-session><language>en</language><country>US</country><msg-time>2008-06-21T03:13:50.750-04:00</msg-time><msg-ttl>36000</msg-ttl><version>0.0.0.1</version>'
+        header = '<header>' \
+                 '<method>GetPersonInfo</method>' \
+                 '<method-version>1</method-version>' \
+                 '<auth-session><auth-token>' + self.auth_token + '</auth-token><user-auth-token>' + self.wctoken + '</user-auth-token></auth-session>' \
+                 '<language>en</language><country>US</country>' \
+                 '<msg-time>%s</msg-time>' \
+                 '<msg-ttl>36000</msg-ttl>' \
+                 '<version>0.0.0.1</version>' % _msg_time()
         info = '<info/>'
         infodigest = base64.encodestring(hashlib.sha1(info).digest())
         headerinfo = '<info-hash><hash-data algName="SHA1">' + infodigest.strip() + '</hash-data></info-hash>'
@@ -84,14 +103,21 @@ class HealthVaultConn(object):
         payload = '<wc-request:request xmlns:wc-request="urn:com.microsoft.wc.request">' + hauthxml + header + info + '</wc-request:request>'
 
         response = self.sendRequest(payload)
+        logger.debug("get record ID response: status=%d", response.status)
         if response.status == 200:
-            dom = minidom.parseString(response.read())
+            body = response.read()
+            logger.debug("get record ID response: %s", body)
+            dom = minidom.parseString(body)
             for node in dom.getElementsByTagName("selected-record-id"):
                 self.record_id = node.firstChild.nodeValue
         else:
-            return "error occured at select record id"
+            raise Exception("error occurred at select record id")
+        if not self.record_id:
+            raise Exception("Could not identify record id")
+        logger.debug("record id = %s", self.record_id)
 
     def sendRequest(self, payload):
+        logger.debug("sendRequest: %s", payload)
         conn = httplib.HTTPSConnection(self.server, 443)
         conn.putrequest('POST', '/platform/wildcat.ashx')
         conn.putheader('Content-Type', 'text/xml')
@@ -103,7 +129,9 @@ class HealthVaultConn(object):
             if v[0] == 32:      # Broken pipe
                 conn.close()
             raise
-        return conn.getresponse()
+        response = conn.getresponse()
+        logger.debug("sendrequest: response status=%d", response.status)
+        return response
 
 
         #HVAULT DataTypes
@@ -113,11 +141,25 @@ class HealthVaultConn(object):
         #weightmeasurementype = "3d34d87e-7fc1-4153-800f-f56592cb0d17"
 
     def getThings(self, hv_datatype):
-        #set record-id in the hearder
-        header = '<header><method>GetThings</method><method-version>1</method-version><record-id>' + self.record_id + '</record-id><auth-session><auth-token>' + self.auth_token + '</auth-token><user-auth-token>' + self.wctoken + '</user-auth-token></auth-session><language>en</language><country>US</country><msg-time>2008-06-21T03:13:50.750-04:00</msg-time><msg-ttl>36000</msg-ttl><version>0.0.0.1</version>'
+        #set record-id in the header
+        logger.debug("get_things(%s)", hv_datatype)
+        header = '<header>' \
+                     '<method>GetThings</method>' \
+                     '<method-version>1</method-version>' \
+                     '<record-id>' + self.record_id + '</record-id>' \
+                     '<auth-session><auth-token>' + self.auth_token + '</auth-token><user-auth-token>' + self.wctoken + '</user-auth-token></auth-session>' \
+                     '<language>en</language><country>US</country>' \
+                     '<msg-time>%s</msg-time>' \
+                     '<msg-ttl>36000</msg-ttl>' \
+                     '<version>0.0.0.1</version>' % _msg_time()
 
         #QUERY INFO
-        info = '<info><group><filter><type-id>' + hv_datatype + '</type-id></filter><format><section>core</section><xml/></format></group></info>'
+        info = '<info><group>' \
+                   '<filter>' \
+                        '<type-id>' + hv_datatype + '</type-id>' \
+                   '</filter>' \
+                   '<format><section>core</section><xml/></format>' \
+                '</group></info>'
 
         # INFO TO ADD WEIGHT.. change METHOD in header to PutThings
         #info = '<info> <thing><type-id>3d34d87e-7fc1-4153-800f-f56592cb0d17</type-id><data-xml><weight><when><date><y>2008</y><m>6</m><d>15</d></date><time><h>10</h><m>23</m><s>10</s></time></when><value><kg>60</kg><display units="lb" units-code="lb">120</display></value></weight><common/> </data-xml> </thing> </info>'
@@ -132,22 +174,29 @@ class HealthVaultConn(object):
         hauthxml = '<auth><hmac-data algName="HMACSHA1">' + hashedheader64.strip() + '</hmac-data></auth>'
         payload = '<wc-request:request xmlns:wc-request="urn:com.microsoft.wc.request">' + hauthxml + header + info + '</wc-request:request>'
         response = self.sendRequest(payload)
+        logger.debug("getThings response: status=%d", response.status)
         return response
 
 
     def getBasicDemographicInfo(self):
-        basic_demographic_datatype = "bf516a61-5252-4c28-a979-27f45f62f78d"
+        """Gets basic demographic info (v2):
+        http://developer.healthvault.com/pages/types/type.aspx?id=3b3e6b16-eb69-483c-8d7e-dfe116ae6092
+
+        Returns dictionary, e.g.::
+
+            {'birthyear': u'1963', 'postcode': u'27510', 'gender': u'm'}
+        """
+
+        basic_demographic_datatype = "3b3e6b16-eb69-483c-8d7e-dfe116ae6092"
         response = self.getThings(basic_demographic_datatype)
-        gender = ''
-        dob = ''
         if response.status == 200:
             body = response.read()
-            print body
+            logger.debug("getBasicDemo - status=200 - response body = %s", body)
             dom = minidom.parseString(body)
-            for node in dom.getElementsByTagName("gender"):
-                gender = node.firstChild.nodeValue
-            for node in dom.getElementsByTagName("birthyear"):
-                dob = node.firstChild.nodeValue
-            return gender + ' ' + dob
+            result = {}
+            for fieldname in ['postcode', 'birthyear', 'gender']:
+                for node in dom.getElementsByTagName(fieldname):
+                    result[fieldname] = node.firstChild.nodeValue
+            return result
         else:
-            return 'error in getting basic demographic info'
+            raise Exception('error in getting basic demographic info')
