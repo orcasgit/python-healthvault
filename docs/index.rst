@@ -54,6 +54,9 @@ To write:
 * TESTS
 
 Until that's done, it might be helpful to look at tests/simple.py as an example.
+You can run it like this::
+
+    python -m tests.simple
 
 
 Indices and tables
