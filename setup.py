@@ -1,4 +1,4 @@
-from distutils.core import setup
+from setuptools import setup
 
 setup(
     name='python-healthvault',
@@ -9,7 +9,7 @@ setup(
     author='Dan Poirier and Caktus Group',
     author_email='dpoirier@caktusgroup.com',
     description='Python library to access Microsoft Healthvault',
-    requires=['pycrypto (>=2.6)', 'sphinx'],
+    install_requires=['pycrypto>=2.6', 'sphinx'],
     classifiers=[
         'Development Status :: 3 - Alpha',
         'Intended Audience :: Developers',
