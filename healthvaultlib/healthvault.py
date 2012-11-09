@@ -151,7 +151,7 @@ class HealthVaultConn(object):
 
         :param hv_datatype: string, the UUID representing the data type to retrieve.
         :returns: ElementTree Element object containing the <wc:info> element of the response
-        :raises HealthVaultException: if the request doesn't succeed with a 200 status.
+        :raises: HealthVaultException if the request doesn't succeed with a 200 status.
         """
 
         #QUERY INFO
@@ -200,7 +200,10 @@ class HealthVaultConn(object):
         """Gets basic demographic info (v2):
         http://developer.healthvault.com/pages/types/type.aspx?id=3b3e6b16-eb69-483c-8d7e-dfe116ae6092
 
-        :returns: a dictionary - some values might be None if they're not returned by HealthVault
+        :returns: a dictionary - some values might be None if they're not returned by HealthVault.  Example::
+
+            {'city': None, 'country_text': 'United States', 'postcode': '27510', 'country_code': None, 'birthyear': 1963, 'gender': 'm'}
+
         :raises: HealthVaultException if the request fails in some way.
         """
 
@@ -221,11 +224,12 @@ class HealthVaultConn(object):
 
         :returns: a list of dictionaries::
 
-           [{'when': datetime.datetime object,
-             'kg': weight measured in kilograms,
-             'lbs': weight measured in pounds
-             },...
-            ]
+            [{'when': datetime.datetime object,
+              'kg': weight measured in kilograms,
+              'lbs': weight measured in pounds
+              },...
+             ]
+
         :raises: HealthVaultException if the request fails in some way.
         """
         info = self.getThings("3d34d87e-7fc1-4153-800f-f56592cb0d17")
@@ -241,9 +245,12 @@ class HealthVaultConn(object):
     def getDevices(self):
         """Get devices.
 
-        FIXME - finish this
+        FIXME: finish this
 
-        :returns: a list of dictionaries.
+        :returns: a list of dictionaries.  Example::
+
+            {'when': datetime.datetime(2008, 1, 1, 10, 30), 'name': 'Digital Peak Flow Meter'}
+
         :raises: HealthVaultException if the request fails in some way.
         """
         info = self.getThings("ef9cf8d5-6c0b-4292-997f-4047240bc7be")
