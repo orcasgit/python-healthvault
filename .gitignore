@@ -3,3 +3,5 @@
 docs/_build
 dist
 MANIFEST
+build
+python_healthvault.egg-info

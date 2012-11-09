@@ -12,6 +12,7 @@ Contents:
    :maxdepth: 2
 
    keys
+   api
 
 This is a library to help Python programs access Microsoft's HealthVault.
 

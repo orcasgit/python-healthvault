@@ -19,9 +19,6 @@ from healthvaultlib.healthvault import HealthVaultConn
 # This is the pre-production server for the US
 SHELL_SERVER = "account.healthvault-ppe.com"
 
-# FIXME: this is ORCAS test app
-#APP_ID = "5b2be475-0110-4186-a592-ef1aeba66e4a"
-
 # FIXME: This is my test app
 APP_ID = "0ce9374d-f6d9-4314-afcc-57f3c8863ba0"
 THUMBPRINT = "67E6AAB1C33781D17B82F8B0D78C0DF1BE3D8866"
@@ -66,29 +63,31 @@ class Handler(BaseHTTPServer.BaseHTTPRequestHandler):
                 'PUBLIC_KEY': APP_PUBLIC_KEY,
                 'PRIVATE_KEY': APP_PRIVATE_KEY
             }
-            conn = HealthVaultConn(config)
+            conn = HealthVaultConn(**config)
             setattr(self.server, 'conn', conn)
 
             # Alright, say hello
             self.send_response(200)
             self.send_header("Content-type", "text/html")
             self.end_headers()
-            self.wfile.write("Hello!  Got your token.\n")
-            self.wfile.write("<a href=\"/demo\">Get demographic info</a>\n")
-            self.wfile.close()
-            return
-        if self.path.startswith("/demo"):
-            # Get demographic data
-            # But, there really isn't any
-            conn = self.server.conn
+            self.wfile.write("Hello!  Got your token.<br/>\n")
             data = conn.getBasicDemographicInfo()
-            self.send_response(200)
-            self.end_headers()
-            # There is unlikely to be any real demographic data if this is just a test application,
-            # so print a few words around it so it's not just an empty page in that case.
-            self.wfile.write("HERE'S the data:\n")
+            self.wfile.write("HERE'S the demographic data:<br/>\n")
             self.wfile.write(data)
-            self.wfile.write("THAT WAS IT\n")
+            self.wfile.write("<br/>\nTHAT WAS IT - if you saw none, check the ACC to make sure your app has permission to look at it<br/>\n")
+
+            data = conn.getWeightMeasurements()
+            self.wfile.write("WEIGHTS:<br/>\n<ul>\n")
+            for w in data:
+                self.wfile.write("<li>%s</li>\n" % str(w))
+            self.wfile.write("</ul>\n")
+
+            data = conn.getDevices()
+            self.wfile.write("DEVICES:<br/>\n<ul>\n")
+            for w in data:
+                self.wfile.write("<li>%s</li>\n" % str(w))
+            self.wfile.write("</ul>\n")
+
             self.wfile.close()
             return
 
@@ -97,6 +96,7 @@ class Handler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.send_response(200)
             self.end_headers()
             self.wfile.close()
+            return
 
         # We get here for any URL we don't recognize
         print "UNHANDLED URL!!!!  %r" % self.path
