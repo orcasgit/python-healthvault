@@ -156,7 +156,13 @@ class Handler(BaseHTTPServer.BaseHTTPRequestHandler):
             'PRIVATE_KEY': APP_PRIVATE_KEY
         }
         try:
-            conn = HealthVaultConn(**config)
+            conn = HealthVaultConn(
+                wctoken=wctoken,
+                app_id=APP_ID,
+                app_thumbprint=THUMBPRINT,
+                public_key=APP_PUBLIC_KEY,
+                private_key=APP_PRIVATE_KEY
+            )
         except HealthVaultException as e:
             print e
             self.server.wctoken = None

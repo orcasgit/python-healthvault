@@ -65,24 +65,24 @@ class HealthVaultConn(object):
     When the HealthVaultConn object is created, it connects to the server to verify the credentials it was given,
     and retrieve the record ID corresponding to the WCTOKEN.
 
-    :param WCTOKEN: string, the token returned from APPAUTH
-    :param HV_APPID: string, the application ID (a UUID)
-    :param APP_THUMBPRINT: string, the thumbprint displayed in the ACC for the public key we're using
-    :param PUBLIC_KEY: long, the public key we're using
-    :param PRIVATE_KEY: long, the private key we're using
-    :param HV_SERVICE_SERVER: string (optional), the hostname of the server to connect to, defaults to
+    :param wctoken: string, the token returned from APPAUTH
+    :param app_id: string, the application ID (a UUID)
+    :param app_thumbprint: string, the thumbprint displayed in the ACC for the public key we're using
+    :param public_key: long, the public key we're using
+    :param private_key: long, the private key we're using
+    :param server: string (optional), the hostname of the server to connect to, defaults to
         "platform.healthvault-ppe.com", the pre-production US server
 
     :raises: HealthVaultException if there's any problem connecting to HealthVault or getting authorized.
     """
 
-    def __init__(self, **config):
-        self.wctoken = config['WCTOKEN']
-        self.HV_APPID = config['HV_APPID']
-        self.APP_THUMBPRINT = config['APP_THUMBPRINT']
-        self.server = config.get('HV_SERVICE_SERVER', 'platform.healthvault-ppe.com')
-        self.PUBLIC_KEY = config['PUBLIC_KEY']
-        self.PRIVATE_KEY = config['PRIVATE_KEY']
+    def __init__(self, wctoken, app_id, app_thumbprint, public_key, private_key, server=None):
+        self.wctoken = wctoken
+        self.HV_APPID = app_id
+        self.APP_THUMBPRINT = app_thumbprint
+        self.PUBLIC_KEY = public_key
+        self.PRIVATE_KEY = private_key
+        self.server = server or 'platform.healthvault-ppe.com'
 
         self.auth_token = self._get_auth_token()
         self.record_id = self._get_record_id()
