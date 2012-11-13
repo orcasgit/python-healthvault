@@ -16,9 +16,6 @@ from urlparse import urlparse, parse_qs
 import webbrowser
 from healthvaultlib.healthvault import HealthVaultConn, HealthVaultException
 
-# This is the pre-production server for the US
-SHELL_SERVER = "account.healthvault-ppe.com"
-
 # FIXME: This is my test app
 APP_ID = "0ce9374d-f6d9-4314-afcc-57f3c8863ba0"
 THUMBPRINT = "67E6AAB1C33781D17B82F8B0D78C0DF1BE3D8866"
@@ -47,25 +44,30 @@ logger = logging.getLogger(__name__)
 
 class Handler(BaseHTTPServer.BaseHTTPRequestHandler):
     def __init__(self, request, client_address, server):
-        """We need to init a lot because a new one of these gets created for every request"""
+        """We need to init a lot because a new one of these gets created for every request.
+        Things we need to keep around we attach to the server object via self.server
+        """
         self.server = server  # the superclass __init__ does this anyway
-        if hasattr(self.server, 'wctoken'):
-            self.wctoken = getattr(self.server, 'wctoken')
-        else:
-            self.wctoken = None
 
-        self.server.wctoken = self.wctoken  # in case it wasn't there yet
-        if not self.server.wctoken and os.path.exists("WCTOKEN"):
-            with open("WCTOKEN", "r") as f:
-                try:
+        if not hasattr(self.server, 'conn'):
+            wctoken = None
+            if os.path.exists("WCTOKEN"):
+                with open("WCTOKEN", "r") as f:
                     wctoken = f.read()
-                    if wctoken:
-                        self.set_wctoken(wctoken)
-                    else:
+                    if not wctoken:
                         os.remove("WCTOKEN")
-                except HealthVaultException:
-                    os.remove("WCTOKEN")
-        assert hasattr(self.server, 'wctoken')
+
+            try:
+                self.server.conn = HealthVaultConn(
+                    wctoken=wctoken,
+                    app_id=APP_ID,
+                    app_thumbprint=THUMBPRINT,
+                    public_key=APP_PUBLIC_KEY,
+                    private_key=APP_PRIVATE_KEY
+                )
+            except HealthVaultException as e:
+                print e
+                raise
 
         # And this is a stupid old-style class, sigh
         # AND THE __init__ PROCESSES THE REQUEST!  ARGGG
@@ -148,46 +150,28 @@ class Handler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def set_wctoken(self, wctoken):
         # Make sure we can connect okay
-        config = {
-            'WCTOKEN': wctoken,
-            'HV_APPID': APP_ID,
-            'APP_THUMBPRINT': THUMBPRINT,
-            'PUBLIC_KEY': APP_PUBLIC_KEY,
-            'PRIVATE_KEY': APP_PRIVATE_KEY
-        }
         try:
-            conn = HealthVaultConn(
-                wctoken=wctoken,
-                app_id=APP_ID,
-                app_thumbprint=THUMBPRINT,
-                public_key=APP_PUBLIC_KEY,
-                private_key=APP_PRIVATE_KEY
-            )
+            self.server.conn.connect(wctoken)
         except HealthVaultException as e:
-            print e
-            self.server.wctoken = None
+            print "Exception making connection or something: %s" % e
             raise
-        self.server.wctoken = wctoken
-        self.server.conn = conn
-        # Looks good, remember it
-        with open("WCTOKEN", "w") as f:
-            f.write(self.server.wctoken)
+        else:
+            # Looks good, remember it
+            with open("WCTOKEN", "w") as f:
+                f.write(wctoken)
 
     def do_GET(self):
         logger.debug("do_GET: path=%s", self.path)
         if self.path == '/':
-            if not self.server.wctoken:
-                logger.debug("No server.wctoken, redir to HV")
+            if not self.server.conn.is_authorized():
+                logger.debug("Not authorized yet, redir to HV")
                 # Start by redirecting user to HealthVault to authorize us
-                target = "APPAUTH"
-                targetqs = urlencode({'appid': APP_ID, 'redirect': 'http://localhost:8000/authtoken'})
-                url = "https://%s/redirect.aspx?%s" % (SHELL_SERVER, urlencode({'target': target, 'targetqs': targetqs}))
-                self.send_response(301)
+                url = self.server.conn.authorization_url('http://localhost:8000/authtoken')
+                self.send_response(307)
                 self.send_header("Location", url)
                 self.end_headers()
                 self.wfile.close()
                 return
-            logger.debug("have server wctoken, show data")
             self.show_data()
             self.wfile.close()
             return
@@ -228,7 +212,7 @@ class Handler(BaseHTTPServer.BaseHTTPRequestHandler):
                 logger.exception("Something went wrong trying to use the token")
                 if os.path.exists("WCTOKEN"):
                     os.remove("WCTOKEN")
-                self.send_response(301)
+                self.send_response(307)
                 self.send_header("Location", "/")
                 self.end_headers()
                 self.wfile.close()
@@ -236,7 +220,7 @@ class Handler(BaseHTTPServer.BaseHTTPRequestHandler):
 
             logger.debug("Got token okay, redir to /")
             # Now redirect to / again
-            self.send_response(301)
+            self.send_response(307)
             self.send_header("Location", "/")
             self.end_headers()
             self.wfile.close()

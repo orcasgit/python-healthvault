@@ -27,11 +27,13 @@ import logging
 from random import randint
 import socket
 import datetime
+from urllib import urlencode
 import xml.etree.ElementTree as ET
 
-from healthvaultlib.hvcrypto import HVCrypto
-from healthvaultlib.xmlutils import (when_to_datetime, int_or_none, text_or_none, boolean_or_none, parse_weight,
-                                     parse_device, elt_to_string, parse_exercise, parse_height, parse_sleep_session)
+from .datatypes import DataType
+from .hvcrypto import HVCrypto
+from .xmlutils import (when_to_datetime, int_or_none, text_or_none, boolean_or_none, parse_weight,
+                       parse_device, elt_to_string, parse_exercise, parse_height, parse_sleep_session)
 
 
 logger = logging.getLogger(__name__)
@@ -65,27 +67,61 @@ class HealthVaultConn(object):
     When the HealthVaultConn object is created, it connects to the server to verify the credentials it was given,
     and retrieve the record ID corresponding to the WCTOKEN.
 
-    :param wctoken: string, the token returned from APPAUTH
     :param app_id: string, the application ID (a UUID)
     :param app_thumbprint: string, the thumbprint displayed in the ACC for the public key we're using
     :param public_key: long, the public key we're using
     :param private_key: long, the private key we're using
     :param server: string (optional), the hostname of the server to connect to, defaults to
         "platform.healthvault-ppe.com", the pre-production US server
+    :param shell_server: string (optional), the hostname of the shell redirect server to connect to, defaults to
+        "account.healthvault-ppe.com", the pre-production US shell server
+    :param wctoken: string, the token returned from APPAUTH. If not available, leave it out and call
+       .connect(wctoken) later.
 
     :raises: HealthVaultException if there's any problem connecting to HealthVault or getting authorized.
     """
 
-    def __init__(self, wctoken, app_id, app_thumbprint, public_key, private_key, server=None):
+    def __init__(self, app_id, app_thumbprint, public_key, private_key, server=None, shell_server=None, wctoken=None):
         self.wctoken = wctoken
-        self.HV_APPID = app_id
-        self.APP_THUMBPRINT = app_thumbprint
-        self.PUBLIC_KEY = public_key
-        self.PRIVATE_KEY = private_key
+        self.app_id = app_id
+        self.app_thumbprint = app_thumbprint
+        self.public_key = public_key
+        self.private_key = private_key
+        # Default to the US, pre-production servers
         self.server = server or 'platform.healthvault-ppe.com'
+        self.shell_server = shell_server or "account.healthvault-ppe.com"
 
+        self.authorized = False
+
+        if wctoken:
+            self.connect(wctoken)
+
+    def is_authorized(self):
+        """Return True if we've been authorized to HealthVault okay"""
+        return self.authorized
+
+    def connect(self, wctoken):
+        """Set the wctoken to use, and establish an authorized session with HealthVault.
+
+         :raises: HealthVaultException if there's any problem connecting to HealthVault
+            or getting authorized.
+        """
+        self.wctoken = wctoken
         self.auth_token = self._get_auth_token()
         self.record_id = self._get_record_id()
+        self.authorized = True
+
+    def authorization_url(self, callback_url):
+        """Return the URL that the user needs to be redirected to in order to
+        grant authorization to this app to access their data.
+
+        :param callback_url: The URL that the user will be redirected back to after
+        they have finished interacting with HealthVault. It will have query
+        parameters appended by HealthVault indicating whether the authorization was
+        granted, and providing the wctoken value if so.
+        """
+        targetqs = urlencode({'appid': self.app_id, 'redirect': callback_url})
+        return "https://%s/redirect.aspx?%s" % (self.shell_server, urlencode({'target': "APPAUTH", 'targetqs': targetqs}))
 
     def _get_auth_token(self):
         """Call HealthVault and get a session token, returning it.
@@ -93,14 +129,14 @@ class HealthVaultConn(object):
         Not part of the public API, just factored out of __init__ for testability.
         """
 
-        crypto = HVCrypto(self.PUBLIC_KEY, self.PRIVATE_KEY)
+        crypto = HVCrypto(self.public_key, self.private_key)
 
         sharedsec = str(randint(2 ** 64, 2 ** 65 - 1))
         self.sharedsec = sharedsec
         sharedsec64 = base64.encodestring(sharedsec)
 
         content = '<content>'\
-                      '<app-id>' + self.HV_APPID + '</app-id>'\
+                      '<app-id>' + self.app_id + '</app-id>'\
                       '<shared-secret>'\
                           '<hmac-alg algName="HMACSHA1">' + sharedsec64 + '</hmac-alg>'\
                       '</shared-secret>'\
@@ -109,7 +145,7 @@ class HealthVaultConn(object):
         header = "<header>"\
                      "<method>CreateAuthenticatedSessionToken</method>"\
                      "<method-version>1</method-version>"\
-                     "<app-id>" + self.HV_APPID + "</app-id>"\
+                     "<app-id>" + self.app_id + "</app-id>"\
                      "<language>en</language><country>US</country>"\
                      "<msg-time>2008-06-21T03:13:50.750-04:00</msg-time>"\
                      "<msg-ttl>36000</msg-ttl>"\
@@ -119,10 +155,10 @@ class HealthVaultConn(object):
         #4. create info with signed content
         info = '<info>'\
                    '<auth-info>'\
-                       '<app-id>' + self.HV_APPID + '</app-id>'\
+                       '<app-id>' + self.app_id + '</app-id>'\
                        '<credential>'\
                             '<appserver>'\
-                                '<sig digestMethod="SHA1" sigMethod="RSA-SHA1" thumbprint="' + self.APP_THUMBPRINT + '">'\
+                                '<sig digestMethod="SHA1" sigMethod="RSA-SHA1" thumbprint="' + self.app_thumbprint + '">'\
                                        + self.signature +\
                                 '</sig>'\
                                 + content +\
@@ -290,8 +326,7 @@ class HealthVaultConn(object):
         :raises: HealthVaultException if the request fails in some way.
         """
 
-        info = self.getThings("3b3e6b16-eb69-483c-8d7e-dfe116ae6092")
-
+        info = self.getThings(DataType.basic_demographic_data)
 
         basic = info.find('group/thing/data-xml/basic')
         return dict(
@@ -320,7 +355,7 @@ class HealthVaultConn(object):
         :type max_date: datetime.datetime
         :raises: HealthVaultException if the request fails in some way.
         """
-        info = self.getThings("ca3c57f4-f4c1-4e15-be67-0a3caf5414ed", min_date, max_date)
+        info = self.getThings(DataType.blood_pressure_measurements, min_date, max_date)
 
         things = []
         for thing in info.findall('group/thing/data-xml/blood-pressure'):
@@ -334,7 +369,7 @@ class HealthVaultConn(object):
         return things
 
     def getHeightMeasurements(self, min_date=None, max_date=None):
-        info = self.getThings("40750a6a-89b2-455c-bd8d-b420a4cb500b", min_date, max_date)
+        info = self.getThings(DataType.height_measurements, min_date, max_date)
         return [parse_height(e) for e in info.findall('group/thing/data-xml/height')]
 
     def getWeightMeasurements(self, min_date=None, max_date=None):
@@ -356,7 +391,7 @@ class HealthVaultConn(object):
         :type max_date: datetime.datetime
         :raises: HealthVaultException if the request fails in some way.
         """
-        info = self.getThings("3d34d87e-7fc1-4153-800f-f56592cb0d17", min_date, max_date)
+        info = self.getThings(DataType.weight_measurements, min_date, max_date)
         return [parse_weight(e) for e in info.findall('group/thing/data-xml/weight')]
 
     def getDevices(self):
@@ -370,7 +405,7 @@ class HealthVaultConn(object):
 
         :raises: HealthVaultException if the request fails in some way.
         """
-        info = self.getThings("ef9cf8d5-6c0b-4292-997f-4047240bc7be")
+        info = self.getThings(DataType.devices)
         # http://developer.healthvault.com/sdk/docs/urn.com.microsoft.wc.thing.equipment.device.1.inlinetype.html
         return [parse_device(e) for e in info.findall('group/thing/data-xml/device')]
 
@@ -387,10 +422,10 @@ class HealthVaultConn(object):
         Uses Other Data Section of Thing: False
         Remarks
         """
-        info = self.getThings("85a21ddb-db20-4c65-8d30-33c899ccf612", min_date, max_date)
+        info = self.getThings(DataType.exercise, min_date, max_date)
         return [parse_exercise(e) for e in info.findall('group/thing/data-xml/exercise')]
 
     def getSleepSessions(self, min_date=None, max_date=None):
-        info = self.getThings("11c52484-7f1a-11db-aeac-87d355d89593", min_date, max_date)
+        info = self.getThings(DataType.sleep_sessions, min_date, max_date)
         return [parse_sleep_session(s) for s in info.findall('group/thing/data-xml/sleep-am')]
 
