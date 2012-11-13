@@ -12,6 +12,7 @@ Contents:
    :maxdepth: 2
 
    keys
+   api
 
 This is a library to help Python programs access Microsoft's HealthVault.
 
@@ -54,6 +55,9 @@ To write:
 * TESTS
 
 Until that's done, it might be helpful to look at tests/simple.py as an example.
+You can run it like this::
+
+    python -m tests.simple
 
 
 Indices and tables
