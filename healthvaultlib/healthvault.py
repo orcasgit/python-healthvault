@@ -78,50 +78,59 @@ class HealthVaultConn(object):
 
     def __init__(self, **config):
         self.wctoken = config['WCTOKEN']
-
         self.HV_APPID = config['HV_APPID']
         self.APP_THUMBPRINT = config['APP_THUMBPRINT']
         self.server = config.get('HV_SERVICE_SERVER', 'platform.healthvault-ppe.com')
+        self.PUBLIC_KEY = config['PUBLIC_KEY']
+        self.PRIVATE_KEY = config['PRIVATE_KEY']
 
-        crypto = HVCrypto(config['PUBLIC_KEY'], config['PRIVATE_KEY'])
+        self.auth_token = self._get_auth_token()
+        self.record_id = self._get_record_id()
+
+    def _get_auth_token(self):
+        """Call HealthVault and get a session token, returning it.
+
+        Not part of the public API, just factored out of __init__ for testability.
+        """
+
+        crypto = HVCrypto(self.PUBLIC_KEY, self.PRIVATE_KEY)
 
         sharedsec = str(randint(2 ** 64, 2 ** 65 - 1))
         self.sharedsec = sharedsec
         sharedsec64 = base64.encodestring(sharedsec)
-        #2. create content with shared sec
-        content = '<content>' \
-                      '<app-id>' + self.HV_APPID + '</app-id>' \
-                      '<shared-secret>' \
-                          '<hmac-alg algName="HMACSHA1">' + sharedsec64 + '</hmac-alg>' \
-                      '</shared-secret>' \
+
+        content = '<content>'\
+                      '<app-id>' + self.HV_APPID + '</app-id>'\
+                      '<shared-secret>'\
+                          '<hmac-alg algName="HMACSHA1">' + sharedsec64 + '</hmac-alg>'\
+                      '</shared-secret>'\
                   '</content>'
         #3. create header
-        header = "<header>" \
-                     "<method>CreateAuthenticatedSessionToken</method>" \
-                     "<method-version>1</method-version>" \
-                     "<app-id>" + self.HV_APPID + "</app-id>" \
-                     "<language>en</language><country>US</country>" \
-                     "<msg-time>2008-06-21T03:13:50.750-04:00</msg-time>" \
-                     "<msg-ttl>36000</msg-ttl>" \
-                     "<version>0.0.0.1</version>" \
+        header = "<header>"\
+                     "<method>CreateAuthenticatedSessionToken</method>"\
+                     "<method-version>1</method-version>"\
+                     "<app-id>" + self.HV_APPID + "</app-id>"\
+                     "<language>en</language><country>US</country>"\
+                     "<msg-time>2008-06-21T03:13:50.750-04:00</msg-time>"\
+                     "<msg-ttl>36000</msg-ttl>"\
+                     "<version>0.0.0.1</version>"\
                  "</header>"
         self.signature = crypto.sign(content)
         #4. create info with signed content
-        info = '<info>' \
-                   '<auth-info>' \
-                       '<app-id>' + self.HV_APPID + '</app-id>' \
-                       '<credential>' \
-                           '<appserver>' \
-                               '<sig digestMethod="SHA1" sigMethod="RSA-SHA1" thumbprint="' + self.APP_THUMBPRINT + '">' \
-                                     + self.signature + \
-                               '</sig>'\
-                               + content + \
-                           '</appserver>' \
-                       '</credential>' \
-                   '</auth-info>' \
+        info = '<info>'\
+                   '<auth-info>'\
+                       '<app-id>' + self.HV_APPID + '</app-id>'\
+                       '<credential>'\
+                            '<appserver>'\
+                                '<sig digestMethod="SHA1" sigMethod="RSA-SHA1" thumbprint="' + self.APP_THUMBPRINT + '">'\
+                                       + self.signature +\
+                                '</sig>'\
+                                + content +\
+                            '</appserver>'\
+                       '</credential>'\
+                   '</auth-info>'\
                '</info>'
         payload = '<wc-request:request xmlns:wc-request="urn:com.microsoft.wc.request">' + header + info + '</wc-request:request>'
-        extra_headers = {'Content-type': 'text/xml'}
 
         (response, body, tree) = self.sendRequest(payload)
 
@@ -130,26 +139,26 @@ class HealthVaultConn(object):
             logger.error("No session token in response.  Request=%s.  Response=%s" % (payload, body))
             raise HealthVaultException("Something wrong in response from HealthVault getting session token -"
                                        " no token in response (%s)" % body)
-        self.auth_token = token_elt.text
+        return token_elt.text
 
-        #5 After you get the auth_token.. get the record id
-        header = '<header>' \
-                 '<method>GetPersonInfo</method>' \
-                 '<method-version>1</method-version>' \
-                 '<auth-session>' \
-                    '<auth-token>' + self.auth_token + '</auth-token>' \
-                    '<user-auth-token>' + self.wctoken + '</user-auth-token>' \
-                 '</auth-session>' \
-                 '<language>en</language><country>US</country>' \
-                 '<msg-time>%s</msg-time>' \
-                 '<msg-ttl>36000</msg-ttl>' \
-                 '<version>0.0.0.1</version>' % _msg_time()
+    def _get_record_id(self):
+        header = '<header>'\
+                     '<method>GetPersonInfo</method>'\
+                     '<method-version>1</method-version>'\
+                     '<auth-session>'\
+                         '<auth-token>' + self.auth_token + '</auth-token>'\
+                         '<user-auth-token>' + self.wctoken + '</user-auth-token>'\
+                     '</auth-session>'\
+                     '<language>en</language><country>US</country>'\
+                     '<msg-time>%s</msg-time>'\
+                     '<msg-ttl>36000</msg-ttl>'\
+                     '<version>0.0.0.1</version>' % _msg_time()
         info = '<info/>'
         infodigest = base64.encodestring(hashlib.sha1(info).digest())
         headerinfo = '<info-hash><hash-data algName="SHA1">' + infodigest.strip() + '</hash-data></info-hash>'
         header = header + headerinfo + '</header>'
 
-        hashedheader = hmac.new(sharedsec, header, hashlib.sha1)
+        hashedheader = hmac.new(self.sharedsec, header, hashlib.sha1)
         hashedheader64 = base64.encodestring(hashedheader.digest())
 
         hauthxml = '<auth><hmac-data algName="HMACSHA1">' + hashedheader64.strip() + '</hmac-data></auth>'
@@ -161,7 +170,7 @@ class HealthVaultConn(object):
         if record_id_elt is None:
             logger.error("No record ID in response.  request=%s, response=%s" % (payload, body))
             raise HealthVaultException("selected record ID not found in HV response (%s)" % body)
-        self.record_id = record_id_elt.text
+        return record_id_elt.text
 
     def sendRequest(self, payload):
         """
@@ -271,7 +280,9 @@ class HealthVaultConn(object):
         """Gets basic demographic info (v2):
         http://developer.healthvault.com/pages/types/type.aspx?id=3b3e6b16-eb69-483c-8d7e-dfe116ae6092
 
-        :returns: a dictionary - some values might be None if they're not returned by HealthVault.  Example::
+        :returns: a dictionary - some values might be None if they're not returned by HealthVault.
+
+        Example::
 
             {'country_text': 'United States', 'postcode': '27510',
              'country_code': None, 'birthyear': 1963, 'gender': 'm'}
@@ -295,7 +306,9 @@ class HealthVaultConn(object):
     def getBloodPressureMeasurements(self, min_date=None, max_date=None):
         """Get Blood Pressure measurements.
 
-        :returns: a list of dictionaries::
+        :returns: a list of dictionaries
+
+        Example::
 
             [{'when': datetime.datetime object,
               FIXME - FILL IN
@@ -327,7 +340,9 @@ class HealthVaultConn(object):
     def getWeightMeasurements(self, min_date=None, max_date=None):
         """Get all weight measurements.
 
-        :returns: a list of dictionaries::
+        :returns: a list of dictionaries
+
+        Example::
 
             [{'when': datetime.datetime object,
               'kg': weight measured in kilograms,
@@ -347,7 +362,9 @@ class HealthVaultConn(object):
     def getDevices(self):
         """Get devices.
 
-        :returns: a list of dictionaries.  Example::
+        :returns: a list of dictionaries.
+
+        Example::
 
             {'when': datetime.datetime(2008, 1, 1, 10, 30), 'device_name': 'Digital Peak Flow Meter'}
 
