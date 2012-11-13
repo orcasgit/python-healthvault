@@ -91,6 +91,8 @@ class HealthVaultConn(object):
         self.server = server or 'platform.healthvault-ppe.com'
         self.shell_server = shell_server or "account.healthvault-ppe.com"
 
+        self.sharedsec = None
+
         self.authorized = False
 
         if wctoken:
@@ -102,6 +104,7 @@ class HealthVaultConn(object):
 
     def connect(self, wctoken):
         """Set the wctoken to use, and establish an authorized session with HealthVault.
+        Not needed if a wctoken was passed initially.
 
          :raises: HealthVaultException if there's any problem connecting to HealthVault
             or getting authorized.
@@ -115,10 +118,16 @@ class HealthVaultConn(object):
         """Return the URL that the user needs to be redirected to in order to
         grant authorization to this app to access their data.
 
+        :note: Use a 307 (temporary) redirect. The user's browser might cache
+            a 301 (permanent) redirect, resulting in the user not being able to
+            get back to the original page because their browser keeps redirecting
+            them to HealthVault due to the cached redirect for that URL.
+
         :param callback_url: The URL that the user will be redirected back to after
-        they have finished interacting with HealthVault. It will have query
-        parameters appended by HealthVault indicating whether the authorization was
-        granted, and providing the wctoken value if so.
+            they have finished interacting with HealthVault. It will have query
+            parameters appended by HealthVault indicating whether the authorization was
+            granted, and providing the wctoken value if so.
+
         """
         targetqs = urlencode({'appid': self.app_id, 'redirect': callback_url})
         return "https://%s/redirect.aspx?%s" % (self.shell_server, urlencode({'target': "APPAUTH", 'targetqs': targetqs}))
@@ -211,11 +220,14 @@ class HealthVaultConn(object):
     def sendRequest(self, payload):
         """
         Send payload as a request to the HealthVault API.
-        Returns (response, body, elementtree):
 
-        response = HTTPResponse
-        body = string with body of response
-        elementtree = ElementTree.Element object with parsed body
+        :returns: (response, body, elementtree)
+
+        Contents of return value::
+
+            response:  HTTPResponse
+            body:  string with body of response
+            elementtree: ElementTree.Element object with parsed body
 
         :raises: HealthVaultException if HTTP response status is not 200 or status in parsed response is not 0.
         """
@@ -243,6 +255,7 @@ class HealthVaultConn(object):
             msg = tree.find("status/error/message").text
             logger.error("HealthVault error. status=%d, message=%s, request=%s, response=%s" % (status, msg, payload, body))
             raise HealthVaultException("Non-success status from HealthVault API.  Status=%d, message=%s" % (status, msg))
+        logger.debug("response body=%r" % body)
         return (response, body, tree)
 
         #HVAULT DataTypes
@@ -345,9 +358,17 @@ class HealthVaultConn(object):
 
         Example::
 
-            [{'when': datetime.datetime object,
-              FIXME - FILL IN
-             ]
+            [{'systolic': 160,
+             'when': datetime.datetime(2012, 11, 12, 11, 24),
+              'irregular_heartbeat': None,
+              'pulse': 16,
+              'diastolic': 80},
+              {'systolic': 160,
+              'when': datetime.datetime(2012, 11, 13, 8, 2),
+              'irregular_heartbeat': None,
+              'pulse': 16,
+              'diastolic': 80},
+              ]
 
         :param min_date: Only things with an effective datetime after this are returned.
         :type min_date: datetime.datetime
@@ -401,7 +422,29 @@ class HealthVaultConn(object):
 
         Example::
 
-            {'when': datetime.datetime(2008, 1, 1, 10, 30), 'device_name': 'Digital Peak Flow Meter'}
+            [{'vendor': {
+                'contact': {
+                    'phone': [{'is_primary': True, 'number': ['2069053456'], 'description': 'Office'}],
+                    'email': [{'is_primary': True, 'description': 'Office', 'address': 'markbo@live.com'}],
+                    'address': [{'city': 'Redmond', 'state': 'WA', 'street': ['NE 34th St'],
+                                  'description': '12345 Apt#234', 'country': 'US', 'is_primary': True,
+                                  'postcode': '98052'}]
+                 },
+                 'name': None,
+                 'organization': 'Microlife',
+                 'type': {'text': 'Provider',
+                          'code': [{'version': ['1'], 'type': 'person-types', 'family': ['wc'], 'value': '2'}]
+                          },
+                'id': '3456789',
+                'professional_training': 'A2Z Testing'
+              },
+              'description': 'Mark Boyce got a Peak flow meter',
+              'serial_number': '23456543',
+              'model': 'PF100',
+              'when': datetime.datetime(2008, 1, 1, 10, 30),
+              'device_name': 'Digital Peak Flow Meter'
+              }
+            ]
 
         :raises: HealthVaultException if the request fails in some way.
         """
