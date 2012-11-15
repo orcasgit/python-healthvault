@@ -10,6 +10,7 @@
 # token we received.
 
 import BaseHTTPServer
+from ssl import wrap_socket
 import os
 from urllib import urlencode
 from urlparse import urlparse, parse_qs
@@ -94,7 +95,7 @@ class Handler(BaseHTTPServer.BaseHTTPRequestHandler):
         #conn.get_authorized_people()
         #conn.get_application_info()
 
-        (sub_id, notification_key) = conn.subscribe_to_event("https://dummyhost.caktusgroup.com/sub/", [DataType.height_measurements])
+        (sub_id, notification_key) = conn.subscribe_to_event("https://thalia.caktusgroup.com:9123/sub/", [DataType.height_measurements])
         self.wfile.write('<p>New subscription: %s, %s</p>\n' % (sub_id, notification_key))
 
         try:
@@ -106,8 +107,8 @@ class Handler(BaseHTTPServer.BaseHTTPRequestHandler):
             for w in data:
                 self.wfile.write("<li>%s</li>\n" % str(w))
                 # Let's delete them as we go
-                sub_id = w['common']['id']
-                conn.unsubscribe_to_event(sub_id)
+                #sub_id = w['common']['id']
+                #conn.unsubscribe_to_event(sub_id)
             self.wfile.write("</ul>\n")
 
         try:
@@ -191,6 +192,14 @@ class Handler(BaseHTTPServer.BaseHTTPRequestHandler):
             with open("WCTOKEN", "w") as f:
                 f.write(wctoken)
 
+    def do_POST(self):
+        logger.debug("do_POST: will call do_GET to handle, after reading the request body")
+        content_length = int(self.headers['content-length'])
+        body = self.rfile.read(content_length)
+        logger.debug("Incoming request body=%r" % body)
+        self.body = body
+        return self.do_GET()
+
     def do_GET(self):
         logger.debug("do_GET: path=%s", self.path)
         if self.path == '/':
@@ -201,10 +210,13 @@ class Handler(BaseHTTPServer.BaseHTTPRequestHandler):
                 self.send_response(307)
                 self.send_header("Location", url)
                 self.end_headers()
-                self.wfile.close()
                 return
             self.show_data()
-            self.wfile.close()
+            return
+
+        if self.path == '/submit':
+            self.send_response(200)
+            self.end_headers()
             return
 
         if self.path.startswith('/authtoken?'):
@@ -219,7 +231,6 @@ class Handler(BaseHTTPServer.BaseHTTPRequestHandler):
                 self.send_response(200)
                 self.end_headers()
                 self.wfile.write("Auth was rejected (by the user?)")
-                self.wfile.close()
                 return
             if target not in ('AppAuthSuccess', 'SelectedRecordChanged'):
                 logger.debug('no idea')
@@ -227,7 +238,6 @@ class Handler(BaseHTTPServer.BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write("Unexpected authtoken target=%s\n" % target)
                 self.wfile.write(self.path)
-                self.wfile.close()
                 return
             if not 'wctoken' in query:
                 logger.debug('no wctoken given')
@@ -246,7 +256,6 @@ class Handler(BaseHTTPServer.BaseHTTPRequestHandler):
                 self.send_response(307)
                 self.send_header("Location", "/")
                 self.end_headers()
-                self.wfile.close()
                 return
 
             logger.debug("Got token okay, redir to /")
@@ -254,26 +263,34 @@ class Handler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.send_response(307)
             self.send_header("Location", "/")
             self.end_headers()
-            self.wfile.close()
             return
 
         # Tired of seeing errors for this one
         if self.path == '/favicon.ico':
             self.send_response(200)
             self.end_headers()
-            self.wfile.close()
             return
 
         # We get here for any URL we don't recognize
         print "UNHANDLED URL!!!!  %r" % self.path
 
 
+class SSLServer(BaseHTTPServer.HTTPServer):
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+
+        May be overridden.
+
+        """
+        self.socket = wrap_socket(self.socket, server_side=True, certfile='cert.pem')
+        BaseHTTPServer.HTTPServer.server_bind(self)
+
 # Start server
 server_address = ('', 8000)
-httpd = BaseHTTPServer.HTTPServer(server_address, Handler)
+httpd = SSLServer(server_address, Handler)
 
 # Point user's browser at our starting URL
-webbrowser.open("http://localhost:8000/")
+#webbrowser.open("https://localhost:8000/")
 
 # And handle requests forever
 httpd.serve_forever()
