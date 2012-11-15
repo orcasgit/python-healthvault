@@ -33,7 +33,7 @@ import xml.etree.ElementTree as ET
 from .datatypes import DataType
 from .hvcrypto import HVCrypto
 from .xmlutils import (when_to_datetime, int_or_none, text_or_none, boolean_or_none, parse_weight,
-                       parse_device, elt_to_string, parse_exercise, parse_height, parse_sleep_session, prettyxml, parse_subscription)
+                       parse_device, elt_to_string, parse_exercise, parse_height, parse_sleep_session, prettyxml, parse_subscription, parse_notification)
 
 from Crypto.Random import get_random_bytes
 
@@ -335,6 +335,58 @@ class HealthVaultConn(object):
 
         (response, body, tree) = self.build_and_send_request("GetAuthorizedPeople", info)
         print prettyxml(body)
+
+    def parse_notification_body(self, body):
+        """Given the body of a notification event request from HealthVault,
+        parse it and return the data as nested dictionaries.
+
+        :param body: A string containing the XML from the body of the notification.
+        :raises: HealthVaultException if a problem is found in the content.
+        :returns: A list of dictionaries, something like this.
+
+        Example::
+
+            [{'common':   {'subscription_id': 'a UUID'},,
+            'record_change_notification':   {
+                'person_id': 'a UUID representing a person',
+                'record_id': 'a UUID representing a record',
+                'things': [ 'a', 'list', 'of', 'thing-type', 'uuids'],
+            },
+            }, ...]
+        """
+
+        """From some sample MS code, here's a template of what an incoming notification
+        might look like::
+
+            <wc:notifications xmlns:wc='urn:com.microsoft.wc.notification'>
+                <notification>
+                    <common>
+                        <subscription-id>{0}</subscription-id>
+                    </common>
+                    <record-change-notification>
+                        <person-id>{1}</person-id>
+                        <record-id>{2}</record-id>
+                        <things>
+                                {3}
+                        </things>
+                    </record-change-notification>
+                </notification>
+            </wc:notifications>
+
+        # Additionally, a request header might contain::
+
+            SomeHeaderName: HVEventingSharedKey subscription_id:key_version:hash_of_stuff
+
+        I'm not sure what the header name should be.
+        """
+
+        tree = ET.fromstring(body)
+
+        # https://platform.healthvault-ppe.com/platform/XSD/notification.xsd
+        result = [parse_notification(n) for n in tree.findall('notification')]
+        return result
+
+
 
     def subscribe_to_event(self, url, thing_types):
         """Create a subscription at HealthVault to be called back when an event happens.

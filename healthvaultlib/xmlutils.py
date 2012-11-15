@@ -430,3 +430,24 @@ def parse_record_item_changed_event_filter(elt):
     return dict(
         type_ids=[text_or_none(item, 'type-id') for item in elt.findall('type-ids/type-id')]
     )
+
+def parse_notification(elt):
+    return dict(
+        common=parse_notification_common(elt.find('common')),
+        record_change_notification=parse_optional_item(elt, 'record_change_notification', parse_record_change_notification),
+    )
+
+def parse_notification_common(elt):
+    return dict(
+        subscription_id=text_or_none(elt, 'subscription-id'),
+    )
+
+def parse_record_change_notification(elt):
+    return dict(
+        person_id=text_or_none(elt, 'person-id'),
+        record_id=text_or_none(elt, 'record-id'),
+        things=[parse_notification_thing(t) for t in elt.findall('things/thing')],
+    )
+
+def parse_notification_thing(elt):
+    return text_or_none(elt, 'thing-id')
