@@ -33,11 +33,16 @@ import xml.etree.ElementTree as ET
 from .datatypes import DataType
 from .hvcrypto import HVCrypto
 from .xmlutils import (when_to_datetime, int_or_none, text_or_none, boolean_or_none, parse_weight,
-                       parse_device, elt_to_string, parse_exercise, parse_height, parse_sleep_session)
+                       parse_device, elt_to_string, parse_exercise, parse_height, parse_sleep_session, prettyxml, parse_subscription)
+
+from Crypto.Random import get_random_bytes
 
 
 logger = logging.getLogger(__name__)
 
+
+# The version current when we wrote this
+HEALTHVAULT_VERSION = "1.11.1023.7909"
 
 def format_datetime(dt):
     """Format a datetime for use in HealthVault requests.
@@ -92,26 +97,34 @@ class HealthVaultConn(object):
         self.shell_server = shell_server or "account.healthvault-ppe.com"
 
         self.sharedsec = None
+        self.record_id = None
 
         self.authorized = False
+
+        # We can get our auth token now, it's not specific to wctoken
+        # This will catch it early if our keys are wrong or something like that
+        self.auth_token = self._get_auth_token()
 
         if wctoken:
             self.connect(wctoken)
 
     def is_authorized(self):
-        """Return True if we've been authorized to HealthVault okay"""
+        """Return True if we've been authorized to HealthVault for a user.
+        If not, connect() needs to be called before attempting online access.
+        Offline access might still be possible.
+        """
         return self.authorized
 
     def connect(self, wctoken):
-        """Set the wctoken to use, and establish an authorized session with HealthVault.
-        Not needed if a wctoken was passed initially.
+        """Set the wctoken to use, and establish an authorized session with HealthVault
+        that can access this person's data.
+        User doesn't need to call this if a wctoken was passed initially.
 
          :raises: HealthVaultException if there's any problem connecting to HealthVault
             or getting authorized.
         """
         self.wctoken = wctoken
-        self.auth_token = self._get_auth_token()
-        self.record_id = self._get_record_id()
+        self.record_id, self.person_id = self._get_record_id()
         self.authorized = True
 
     def authorization_url(self, callback_url):
@@ -138,6 +151,9 @@ class HealthVaultConn(object):
         Not part of the public API, just factored out of __init__ for testability.
         """
 
+        # Interesting note: wctoken is not needed here. The token we're getting is just
+        # for our app and is not specific to a particular user.
+
         crypto = HVCrypto(self.public_key, self.private_key)
 
         sharedsec = str(randint(2 ** 64, 2 ** 65 - 1))
@@ -158,7 +174,7 @@ class HealthVaultConn(object):
                      "<language>en</language><country>US</country>"\
                      "<msg-time>2008-06-21T03:13:50.750-04:00</msg-time>"\
                      "<msg-ttl>36000</msg-ttl>"\
-                     "<version>0.0.0.1</version>"\
+                     "<version>" + HEALTHVAULT_VERSION + "</version>"\
                  "</header>"
         self.signature = crypto.sign(content)
         #4. create info with signed content
@@ -187,35 +203,21 @@ class HealthVaultConn(object):
         return token_elt.text
 
     def _get_record_id(self):
-        header = '<header>'\
-                     '<method>GetPersonInfo</method>'\
-                     '<method-version>1</method-version>'\
-                     '<auth-session>'\
-                         '<auth-token>' + self.auth_token + '</auth-token>'\
-                         '<user-auth-token>' + self.wctoken + '</user-auth-token>'\
-                     '</auth-session>'\
-                     '<language>en</language><country>US</country>'\
-                     '<msg-time>%s</msg-time>'\
-                     '<msg-ttl>36000</msg-ttl>'\
-                     '<version>0.0.0.1</version>' % _msg_time()
-        info = '<info/>'
-        infodigest = base64.encodestring(hashlib.sha1(info).digest())
-        headerinfo = '<info-hash><hash-data algName="SHA1">' + infodigest.strip() + '</hash-data></info-hash>'
-        header = header + headerinfo + '</header>'
-
-        hashedheader = hmac.new(self.sharedsec, header, hashlib.sha1)
-        hashedheader64 = base64.encodestring(hashedheader.digest())
-
-        hauthxml = '<auth><hmac-data algName="HMACSHA1">' + hashedheader64.strip() + '</hmac-data></auth>'
-        payload = '<wc-request:request xmlns:wc-request="urn:com.microsoft.wc.request">' + hauthxml + header + info + '</wc-request:request>'
-
-        (response, body, tree) = self.sendRequest(payload)
+        """
+        Returns (selected_record_id, person_id)
+        """
+        (response, body, tree) = self.build_and_send_request("GetPersonInfo", "<info/>", use_record_id=False)
 
         record_id_elt = tree.find('{urn:com.microsoft.wc.methods.response.GetPersonInfo}info/person-info/selected-record-id')
         if record_id_elt is None:
-            logger.error("No record ID in response.  request=%s, response=%s" % (payload, body))
+            logger.error("No record ID in response.  response=%s" % body)
             raise HealthVaultException("selected record ID not found in HV response (%s)" % body)
-        return record_id_elt.text
+        person_id_elt = tree.find('{urn:com.microsoft.wc.methods.response.GetPersonInfo}info/person-info/person-id')
+        if person_id_elt is None:
+            logger.error("No person ID in response. Response=%s" % body)
+            raise HealthVaultException("person ID not found in HV response (%s)" % body)
+
+        return (record_id_elt.text, person_id_elt.text)
 
     def sendRequest(self, payload):
         """
@@ -236,6 +238,7 @@ class HealthVaultConn(object):
         conn.putheader('Content-Type', 'text/xml')
         conn.putheader('Content-Length', '%d' % len(payload))
         conn.endheaders()
+        logger.debug("Posting request: %s" % payload)
         try:
             conn.send(payload)
         except socket.error, v:
@@ -253,7 +256,7 @@ class HealthVaultConn(object):
         status = int(tree.find('status/code').text)
         if status != 0:
             msg = tree.find("status/error/message").text
-            logger.error("HealthVault error. status=%d, message=%s, request=%s, response=%s" % (status, msg, payload, body))
+            logger.error("HealthVault error. status=%d, message=%s, request=%s, response=%s" % (status, msg, prettyxml(payload), prettyxml(body)))
             raise HealthVaultException("Non-success status from HealthVault API.  Status=%d, message=%s" % (status, msg))
         logger.debug("response body=%r" % body)
         return (response, body, tree)
@@ -263,6 +266,194 @@ class HealthVaultConn(object):
         #ccrtype = "9c48a2b8-952c-4f5a-935d-f3292326bf54"
         #conditions = "7ea7a1f9-880b-4bd4-b593-f5660f20eda8"
         #weightmeasurementype = "3d34d87e-7fc1-4153-800f-f56592cb0d17"
+
+    def build_and_send_request(self, method_name, info, method_version=1, use_record_id=True,
+                               use_target_person_id=False, use_wctoken=True):
+        """
+        (internal method)
+
+        Given the <info>...</info> part of a request, wrap it with all the identification and auth stuff
+        to form a complete request, call sendRequest() to send it, and return whatever sendRequest returns.
+
+        :param method_name: String with the name of the method to call, e.g. "GetThings"
+        :param info: String with the <info> part of the request
+        :param method_version: Override the default method version (1)
+        :param use_record_id: Whether to include the <record-id> in the request (default: True)
+        :param use_target_person_id: Whether to include the <target-person-id> in the request (default: False)
+        :param use_wctoken: Whether to include the wctoken (<auth-token>) in the request (default: True)
+        """
+        # https://platform.healthvault-ppe.com/platform/XSD/request.xsd
+
+        infodigest = base64.encodestring(hashlib.sha1(info).digest())
+        headerinfo = '<info-hash><hash-data algName="SHA1">' + infodigest.strip() + '</hash-data></info-hash>'
+
+        header = '<header>'\
+                 '<method>' + method_name + '</method>'\
+                 '<method-version>' + str(method_version) + '</method-version>'
+        if use_target_person_id:
+            if self.person_id is not None:
+                header += "<target-person-id>" + self.person_id + "</target-person-id>"
+            else:
+                raise ValueError("person ID is not available but use_target_person_id is True")
+        if use_record_id:
+            if self.record_id is not None:
+                header += '<record-id>' + self.record_id + '</record-id>'
+            else:
+                raise ValueError("record ID is not available but use_record_id is True")
+
+        header += \
+                 '<auth-session>'\
+                 '<auth-token>' + self.auth_token + '</auth-token>'
+        if use_wctoken:
+            if self.wctoken is not None:
+                header += '<user-auth-token>' + self.wctoken + '</user-auth-token>'
+            else:
+                raise ValueError("wctoken is not available but use_wctoken is True")
+        header += \
+                 '</auth-session>'\
+                 '<language>en</language>'\
+                 '<country>US</country>'\
+                 '<msg-time>' + _msg_time() + '</msg-time>'\
+                 '<msg-ttl>36000</msg-ttl>'\
+                 '<version>' + HEALTHVAULT_VERSION + '</version>' + headerinfo +\
+                 '</header>'
+
+        hashedheader = hmac.new(self.sharedsec, header, hashlib.sha1)
+        hashedheader64 = base64.encodestring(hashedheader.digest())
+
+        hauthxml = '<auth><hmac-data algName="HMACSHA1">' + hashedheader64.strip() + '</hmac-data></auth>'
+        payload = '<wc-request:request xmlns:wc-request="urn:com.microsoft.wc.request">' + hauthxml + header + info + '</wc-request:request>'
+
+        return self.sendRequest(payload)
+
+    def get_application_info(self):
+        (response, body, tree) = self.build_and_send_request("GetApplicationInfo", "<info/>", method_version=2)
+        print prettyxml(body)
+
+    def get_authorized_people(self):
+        info = '<info><parameters></parameters></info>'
+
+        (response, body, tree) = self.build_and_send_request("GetAuthorizedPeople", info)
+        print prettyxml(body)
+
+    def subscribe_to_event(self, url, thing_types):
+        """Create a subscription at HealthVault to be called back when an event happens.
+
+        Can only be used when the person is online.
+
+        Authorization
+        The user must have granted the application offline read access to the data type that the subscription refers to.
+
+        Number of subscriptions
+        An application can only register 25 subscriptions at a time. This number is subject to change.
+
+        The caller should save the returned GUID and notification key, to identify and validate
+        incoming notifications later.
+
+        For more information, see this blog entry
+        http://blogs.msdn.com/b/ericgu/archive/2011/01/20/healthvault-event-notifications.aspx
+        and this documentation page
+        http://msdn.microsoft.com/en-us/library/gg681193.aspx
+
+        :param thing_types: An iterable of strings with UUIDs of Thing types to be notified of changes in
+        :param url: The URL that HealthVault will call when an event happens. Must begin with https:
+        :returns: (sub_id, notification_key): The GUID of the new subscription (string), and the base64-encoded
+            notification key for the subscription.
+        """
+
+        # http://blogs.msdn.com/b/ericgu/archive/2011/01/20/healthvault-event-notifications.aspx
+        # http://developer.healthvault.com/pages/methods/methods.aspx
+        # https://platform.healthvault-ppe.com/platform/XSD/method-subscribetoevent.xsd
+        # https://platform.healthvault-ppe.com/platform/XSD/response-subscribetoevent.xsd
+        # https://platform.healthvault-ppe.com/platform/XSD/subscription.xsd
+
+        if not url.startswith("https://"):
+            raise ValueError("URL for subscribe_to_events must start with https:// but %s does not." % url)
+
+        # Notification key
+        # <summary>The base64 encoded key bytes.</summary>
+        # <remarks>
+        # The length of the key must be 64 bytes before any base64 encoding is applied. The key is used by the
+        # HealthVault service as the key input to the HMACSHA256 algorithm. The hash that is output by the algorithm
+        # is sent with notifications that HealthVault delivers to the subscription's notification channel. If a key
+        # is changed, the version key id should also be changed so that the notification handler can support both
+        # keys during the changeover period.
+
+        # We just generate a shared key randomly
+        keybytes = get_random_bytes(64)
+        notification_key = base64.encodestring(keybytes)
+        # and set the version to 1 since this is a new subscription and key
+        notification_key_version_id = str(1)
+
+        # for SubscribeToEvent, <info> can contain a <subscription> element (?)
+        subscription = '<subscription>'
+
+        # which contains a <common>
+        subscription += '<common>'
+
+        # Note: here's where we could specify an ID for the new subscription, according to
+        # the schema, but when we try it, the request is rejected as invalid. Just leave it
+        # out and return the ID that HealthVaulth made up.
+
+        # auth - we send a key that is used by HV later, when sending notifications, to prove it's them
+        subscription += '<notification-authentication-info>'
+        subscription += '<hv-eventing-shared-key>'
+        subscription += '<notification-key>' + notification_key + '</notification-key>'
+        subscription += '<notification-key-version-id>' + notification_key_version_id + '</notification-key-version-id>'
+        subscription += '</hv-eventing-shared-key>'
+        subscription += '</notification-authentication-info>'
+
+        # how we get notified
+        subscription += '<notification-channel>'
+        subscription += '<http-notification-channel><url>%s</url></http-notification-channel>' % url
+        subscription += '</notification-channel>'
+        subscription += '</common>'
+
+        # now, the subscription itself
+        # only record item changed events are currently supported
+        # and the only filter is on type IDs.
+        # so all this nesting is kind of pointless.
+        subscription += '<record-item-changed-event><filters><filter><type-ids>'
+        for thing_type in thing_types:
+            subscription += '<type-id>%s</type-id>' % thing_type
+        subscription += '</type-ids></filter></filters></record-item-changed-event>'
+
+        subscription += '</subscription>'
+
+        info = '<info>' + subscription + '</info>'
+
+        # Apparently we should NOT include the wctoken - no idea why not
+        # use_target_person_id=True ==> HealthVault error. status=9, message=The account is not active.
+        # use_target_person_id=False ==> Status=134, message=None
+        #  but 134 is SUBSCRIPTION_INVALID 134 The subscription contains invalid data.  which is promising
+        # it would be nice if it said what's invalid about it though
+        (response, body, tree) = self.build_and_send_request("SubscribeToEvent", info, use_wctoken=False)
+
+        info = tree.find('{urn:com.microsoft.wc.methods.response.SubscribeToEvent}info')
+        print elt_to_string(info)
+        sub_id = text_or_none(info, 'subscription-id')
+        return (sub_id, notification_key)
+
+    def get_event_subscriptions(self):
+        """Get the list of our event subscriptions from HealthVault
+        """
+        # This request has no content
+        # And apparently we should NOT include the wctoken
+        # https://platform.healthvault-ppe.com/platform/XSD/response-geteventsubscriptions.xsd
+        (response, body, tree) = self.build_and_send_request('GetEventSubscriptions', '<info/>', use_wctoken=False)
+        print prettyxml(body)
+        info = tree.find('{urn:com.microsoft.wc.methods.response.GetEventSubscriptions}info')
+        return [parse_subscription(sub) for sub in info.findall('subscriptions/subscription')]
+
+    def unsubscribe_to_event(self, sub_id):
+        """
+        Delete one subscription
+
+        :param sub_id: String containing the ID of a subscription.
+        """
+        info = '<info><subscription-id>%s</subscription-id></info>' % sub_id
+        self.build_and_send_request('UnsubscribeToEvent', info, use_wctoken=False)
+        # No need to look at response - either it worked or not, and if not, an exception will have been raised
 
     def getThings(self, hv_datatype, min_date=None, max_date=None, filter=None):
         """Call the getThings API to retrieve some things (data items).
@@ -295,31 +486,8 @@ class HealthVaultConn(object):
                    '</filter>'\
                    '<format><section>core</section><xml/></format>'\
                '</group></info>'
-        infodigest = base64.encodestring(hashlib.sha1(info).digest())
-        headerinfo = '<info-hash><hash-data algName="SHA1">' + infodigest.strip() + '</hash-data></info-hash>'
 
-        header = '<header>' \
-                     '<method>GetThings</method>' \
-                     '<method-version>1</method-version>' \
-                     '<record-id>' + self.record_id + '</record-id>' \
-                     '<auth-session>' \
-                        '<auth-token>' + self.auth_token + '</auth-token>' \
-                        '<user-auth-token>' + self.wctoken + '</user-auth-token>' \
-                     '</auth-session>' \
-                     '<language>en</language>' \
-                     '<country>US</country>' \
-                     '<msg-time>' + _msg_time() + '</msg-time>' \
-                     '<msg-ttl>36000</msg-ttl>' \
-                     '<version>0.0.0.1</version>' + headerinfo + \
-                 '</header>'
-
-        hashedheader = hmac.new(self.sharedsec, header, hashlib.sha1)
-        hashedheader64 = base64.encodestring(hashedheader.digest())
-
-        hauthxml = '<auth><hmac-data algName="HMACSHA1">' + hashedheader64.strip() + '</hmac-data></auth>'
-        payload = '<wc-request:request xmlns:wc-request="urn:com.microsoft.wc.request">' + hauthxml + header + info + '</wc-request:request>'
-
-        (response, body, tree) = self.sendRequest(payload)
+        (response, body, tree) = self.build_and_send_request("GetThings", info)
 
         info = tree.find('{urn:com.microsoft.wc.methods.response.GetThings}info')
         return info

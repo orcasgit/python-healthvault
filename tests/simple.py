@@ -14,6 +14,7 @@ import os
 from urllib import urlencode
 from urlparse import urlparse, parse_qs
 import webbrowser
+from healthvaultlib.datatypes import DataType
 from healthvaultlib.healthvault import HealthVaultConn, HealthVaultException
 
 # FIXME: This is my test app
@@ -67,7 +68,14 @@ class Handler(BaseHTTPServer.BaseHTTPRequestHandler):
                 )
             except HealthVaultException as e:
                 print e
-                raise
+                # Leave it un-authorized
+                # set up un-authorized conn
+                self.server.conn = HealthVaultConn(
+                    app_id=APP_ID,
+                    app_thumbprint=THUMBPRINT,
+                    public_key=APP_PUBLIC_KEY,
+                    private_key=APP_PRIVATE_KEY
+                )
 
         # And this is a stupid old-style class, sigh
         # AND THE __init__ PROCESSES THE REQUEST!  ARGGG
@@ -79,6 +87,29 @@ class Handler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.end_headers()
 
         conn = self.server.conn
+
+        self.wfile.write("<p>Record id: %s</p>\n" % conn.record_id)
+        self.wfile.write("<p>Person id: %s</p>\n" % conn.person_id)
+
+        #conn.get_authorized_people()
+        #conn.get_application_info()
+
+        (sub_id, notification_key) = conn.subscribe_to_event("https://dummyhost.caktusgroup.com/sub/", [DataType.height_measurements])
+        self.wfile.write('<p>New subscription: %s, %s</p>\n' % (sub_id, notification_key))
+
+        try:
+            data = conn.get_event_subscriptions()
+        except HealthVaultException as e:
+            self.wfile.write("Exception getting subscriptions: %s<br/>\n" % e)
+        else:
+            self.wfile.write("SUBSCRIPTIONS:<br/>\n<ul>\n")
+            for w in data:
+                self.wfile.write("<li>%s</li>\n" % str(w))
+                # Let's delete them as we go
+                sub_id = w['common']['id']
+                conn.unsubscribe_to_event(sub_id)
+            self.wfile.write("</ul>\n")
+
         try:
             data = conn.getBasicDemographicInfo()
         except HealthVaultException as e:

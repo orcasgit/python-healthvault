@@ -5,6 +5,12 @@ import datetime
 import xml.etree.ElementTree as ET
 
 
+def prettyxml(xml):
+    """Given a string with XML, return a string with the XML formatted pretty"""
+    from xml.dom import minidom
+    dom = minidom.parseString(xml)
+    return dom.toprettyxml()
+
 def elt_to_string(elt):
     """Given an ElementTree element object, return a string with nicely formatted XML"""
     et = ET.ElementTree(elt)
@@ -13,9 +19,7 @@ def elt_to_string(elt):
     s = s.getvalue()
     # Now s has the XML as one long string, but that's hard to read.
     # This is inefficient, but we only use it when debugging.
-    from xml.dom import minidom
-    dom = minidom.parseString(s)
-    return dom.toprettyxml()
+    return prettyxml(s)
 
 # Little utils to help pull data out of the XML
 def text_list(elt, xpath):
@@ -378,4 +382,51 @@ def parse_awakening(elt):
     return dict(
         when=parse_time(elt.find('when')),
         minutes=int_or_none(elt, 'minutes'),
+    )
+
+def parse_subscription(elt):
+    """
+    https://platform.healthvault-ppe.com/platform/XSD/subscription.xsd
+    """
+    return dict(
+        common=parse_subscription_common(elt.find('common')),
+        record_item_changed_event=parse_record_item_changed_event(elt.find('record-item-changed-event')),
+    )
+
+def parse_subscription_common(elt):
+    return dict(
+        id=text_or_none(elt, 'id'),
+        notification_authentication_info=parse_notification_authentication_info(elt.find('notification-authentication-info')),
+        notification_channel=parse_notification_channel(elt.find('notification-channel')),
+    )
+
+def parse_notification_authentication_info(elt):
+    return dict(
+        hv_eventing_shared_key=parse_hv_eventing_shared_key(elt.find('hv-eventing-shared-key')),
+    )
+
+def parse_hv_eventing_shared_key(elt):
+    return dict(
+        notification_key=text_or_none(elt, 'notification-key'),
+        notification_key_version_id=text_or_none(elt, 'notification-key-version-id'),
+    )
+
+def parse_notification_channel(elt):
+    return dict(
+        http_notification_channel=parse_optional_item(elt, 'http-notification-channel', parse_http_notification_channel),
+    )
+
+def parse_http_notification_channel(elt):
+    return dict(
+        url=text_or_none(elt, 'url'),
+    )
+
+def parse_record_item_changed_event(elt):
+    return dict(
+        filters=[parse_record_item_changed_event_filter(f) for f in elt.findall('filter')]
+    )
+
+def parse_record_item_changed_event_filter(elt):
+    return dict(
+        type_ids=[text_or_none(item, 'type-id') for item in elt.findall('type-ids/type-id')]
     )
