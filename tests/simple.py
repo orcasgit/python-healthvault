@@ -10,6 +10,7 @@
 # token we received.
 
 import BaseHTTPServer
+import pprint
 from ssl import wrap_socket
 import os
 from urllib import urlencode
@@ -92,12 +93,29 @@ class Handler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.wfile.write("<p>Record id: %s</p>\n" % conn.record_id)
         self.wfile.write("<p>Person id: %s</p>\n" % conn.person_id)
 
+        try:
+            alt_ids = conn.get_alternate_ids()
+        except HealthVaultException as e:
+            self.wfile.write("Exception getting alternate Ids: %s<br/>\n" % e)
+        else:
+            msg = "Alternate IDs: %s<br/>\n" % ", ".join(alt_ids)
+            self.wfile.write(msg)
+            for alt_id in alt_ids:
+                conn.disassociate_alternate_id(alt_id)
+                self.wfile.write("Removed alternate ID %s<br/>\n" % alt_id)
+
+        try:
+            conn.associate_alternate_id("FredBoy")
+        except HealthVaultException as e:
+            self.wfile.write("Exception associating alternate ID: %s<br/>\n" % e)
+        else:
+            self.wfile.write("Added alternate ID %s<br/>\n" % "FredBoy")
+
         #conn.get_authorized_people()
         #conn.get_application_info()
 
-        (sub_id, notification_key) = conn.subscribe_to_event("https://thalia.caktusgroup.com:9123/sub/", [DataType.height_measurements])
-        self.wfile.write('<p>New subscription: %s, %s</p>\n' % (sub_id, notification_key))
-
+        # Thing types we're subscribed to
+        subscribed_to = set()
         try:
             data = conn.get_event_subscriptions()
         except HealthVaultException as e:
@@ -105,14 +123,30 @@ class Handler(BaseHTTPServer.BaseHTTPRequestHandler):
         else:
             self.wfile.write("SUBSCRIPTIONS:<br/>\n<ul>\n")
             for w in data:
-                self.wfile.write("<li>%s</li>\n" % str(w))
-                # Let's delete them as we go
-                #sub_id = w['common']['id']
-                #conn.unsubscribe_to_event(sub_id)
+                self.wfile.write("<li>%s</li>\n" % pprint.pformat(w))
+                done = False
+                for filter in w['record_item_changed_event']['filters']:
+                    for type_id in filter['type_ids']:
+                        if type_id in subscribed_to:
+                            print "Duplicate subscription found (%s), let's delete it" % type_id
+                            conn.unsubscribe_to_event(w['common']['id'])
+                            done = True
+                            break
+                        subscribed_to.add(type_id)
+                    if done:
+                        break
             self.wfile.write("</ul>\n")
 
+        # Type IDs we want to be subscribed to
+        wanted_type_ids = [DataType.height_measurements, DataType.weight_measurements,
+                           DataType.blood_pressure_measurements, DataType.basic_demographic_data,
+                           DataType.devices]
+        for type_id in wanted_type_ids:
+            if type_id not in subscribed_to:
+                conn.subscribe_to_event("https://thalia.caktusgroup.com:9123/sub/", [type_id])
+
         try:
-            data = conn.getBasicDemographicInfo()
+            data = conn.get_basic_demographic_info()
         except HealthVaultException as e:
             self.wfile.write("Exception getting basic demographic data: %s<br/>\n" % e)
         else:
@@ -121,7 +155,16 @@ class Handler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.wfile.write("<br/>\n")
 
         try:
-            data = conn.getWeightMeasurements()
+            data = conn.get_blood_glucose_measurements()
+        except HealthVaultException as e:
+            self.wfile.write("Exception getting blood glucose: %s<br/>\n" % e)
+        else:
+            self.wfile.write("Blood glucose: <ul>")
+            self.wfile.write("".join(["<li>" + repr(d) + "</li>" for d in data]))
+            self.wfile.write("</ul>\n")
+
+        try:
+            data = conn.get_weight_measurements()
         except HealthVaultException as e:
             self.wfile.write("Exception getting weight measurements: %s<br/>\n" % e)
         else:
@@ -131,7 +174,7 @@ class Handler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.wfile.write("</ul>\n")
 
         try:
-            data = conn.getDevices()
+            data = conn.get_devices()
         except HealthVaultException as e:
             self.wfile.write("Exception getting device data: %s<br/>\n" % e)
         else:
@@ -141,7 +184,7 @@ class Handler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.wfile.write("</ul>\n")
 
         try:
-            data = conn.getBloodPressureMeasurements()
+            data = conn.get_blood_pressure_measurements()
         except HealthVaultException as e:
             self.wfile.write("Exception getting BP: %s<br/>\n" % e)
         else:
@@ -150,7 +193,7 @@ class Handler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.wfile.write("</ul>\n")
 
         try:
-            data = conn.getHeightMeasurements()
+            data = conn.get_height_measurements()
         except HealthVaultException as e:
             self.wfile.write("Exception getting heights: %s<br/>\n" % e)
         else:
@@ -159,7 +202,7 @@ class Handler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.wfile.write("</ul>\n")
 
         try:
-            data = conn.getExercise()
+            data = conn.get_exercise()
         except HealthVaultException as e:
             self.wfile.write("Exception getting exercise: %s<br/>\n" % e)
         else:
@@ -168,14 +211,13 @@ class Handler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.wfile.write("</ul>\n")
 
         try:
-            data = conn.getSleepSessions()
+            data = conn.get_sleep_sessions()
         except HealthVaultException as e:
             self.wfile.write("Exception getting sleep sessions: %s<br/>\n" % e)
         else:
             self.wfile.write("Sleep sessions: <ul>")
             self.wfile.write("".join(["<li>" + repr(d) + "</li>" for d in data]))
             self.wfile.write("</ul>\n")
-
 
         self.wfile.write("END.<br/>\n")
 
@@ -206,7 +248,7 @@ class Handler(BaseHTTPServer.BaseHTTPRequestHandler):
             if not self.server.conn.is_authorized():
                 logger.debug("Not authorized yet, redir to HV")
                 # Start by redirecting user to HealthVault to authorize us
-                url = self.server.conn.authorization_url('http://localhost:8000/authtoken')
+                url = self.server.conn.authorization_url('https://localhost:8000/authtoken')
                 self.send_response(307)
                 self.send_header("Location", url)
                 self.end_headers()
@@ -290,7 +332,7 @@ server_address = ('', 8000)
 httpd = SSLServer(server_address, Handler)
 
 # Point user's browser at our starting URL
-#webbrowser.open("https://localhost:8000/")
+webbrowser.open("https://localhost:8000/")
 
 # And handle requests forever
 httpd.serve_forever()

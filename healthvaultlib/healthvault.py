@@ -33,7 +33,7 @@ import xml.etree.ElementTree as ET
 from .datatypes import DataType
 from .hvcrypto import HVCrypto
 from .xmlutils import (when_to_datetime, int_or_none, text_or_none, boolean_or_none, parse_weight,
-                       parse_device, elt_to_string, parse_exercise, parse_height, parse_sleep_session, prettyxml, parse_subscription, parse_notification)
+                       parse_device, elt_to_string, parse_exercise, parse_height, parse_sleep_session, pretty_xml, parse_subscription, parse_notification, parse_blood_glucose)
 
 from Crypto.Random import get_random_bytes
 
@@ -65,8 +65,14 @@ def _msg_time():
 class HealthVaultException(Exception):
     """This exception is raised for any error in the python-healthvault library.
 
+    It has a :py:attr:`code` attribute that'll be set to the
+    `HealthVault status code <http://msdn.microsoft.com/en-us/library/hh567902.aspx>`_,
+    if one is available (otherwise it's None)
+
     """
-    pass
+    def __init__(self, *args, **kwargs):
+        self.code = kwargs.pop('code', None)
+        super(HealthVaultException, self).__init__(*args, **kwargs)
 
 
 class HealthVaultConn(object):
@@ -89,18 +95,28 @@ class HealthVaultConn(object):
     retrieve the record id and person id for the record and person that the user has granted
     access to.
 
-    :param app_id: string, the application ID (a UUID)
-    :param app_thumbprint: string, the thumbprint displayed in the ACC for the public key we're using
-    :param public_key: long, the public key we're using
-    :param private_key: long, the private key we're using
-    :param server: string (optional), the hostname of the server to connect to, defaults to
+    Check the record id (:py:attr:`.record_id`) and person ID (:py:attr:`.person_id`). The user could
+    sign in to HealthVault as another user, or change the person they're granting access to, and this
+    is the only way for an application to tell that this `HealthVaultConn` object is now accessing data
+    for a different person.
+
+    :param string app_id: the application ID (a UUID)
+    :param string app_thumbprint: the thumbprint displayed in the ACC for the public key we're using
+    :param long public_key: the public key we're using
+    :param long private_key: the private key we're using
+    :param string server: (optional), the hostname of the server to connect to, defaults to
         "platform.healthvault-ppe.com", the pre-production US server
-    :param shell_server: string (optional), the hostname of the shell redirect server to connect to, defaults to
+    :param string shell_server: (optional), the hostname of the shell redirect server to connect to, defaults to
         "account.healthvault-ppe.com", the pre-production US shell server
-    :param wctoken: string, the token returned from APPAUTH. If not available, leave it out and call
+    :param string wctoken: the token returned from APPAUTH. If not available, leave it out and call
        :py:meth:`.connect(wctoken)` later.
 
     :raises: :py:exc:`HealthVaultException` if there's any problem connecting to HealthVault or getting authorized.
+    """
+
+    record_id = None
+    """
+    The HealthVault record ID corresponding to the auth-token.  A string containing a UUID, or None.
     """
 
     def __init__(self, app_id, app_thumbprint, public_key, private_key, server=None, shell_server=None, wctoken=None):
@@ -114,6 +130,7 @@ class HealthVaultConn(object):
         self.shell_server = shell_server or "account.healthvault-ppe.com"
 
         self.sharedsec = str(randint(2 ** 64, 2 ** 65 - 1))
+
         self.record_id = None
 
         self.authorized = False
@@ -139,10 +156,14 @@ class HealthVaultConn(object):
 
     def connect(self, wctoken):
         """Set the wctoken to use, and establish an authorized session with HealthVault
-        that can access this person's data.
-        User doesn't need to call this if a wctoken was passed initially.
+        that can access this person's data. User doesn't need to call this if a wctoken
+        was passed initially.
 
-         :raises: HealthVaultException if there's any problem connecting to HealthVault
+        :param string wctoken: The auth token passed to the application after the user has
+            authorized the app.  Specifically, this is the value of the `wctoken`
+            query parameter on that request.
+
+        :raises: HealthVaultException if there's any problem connecting to HealthVault
             or getting authorized.
         """
         self.wctoken = wctoken
@@ -158,10 +179,11 @@ class HealthVaultConn(object):
             get back to the original page because their browser keeps redirecting
             them to HealthVault due to the cached redirect for that URL.
 
-        :param callback_url: The URL that the user will be redirected back to after
+        :param URL callback_url: The URL that the user will be redirected back to after
             they have finished interacting with HealthVault. It will have query
             parameters appended by HealthVault indicating whether the authorization was
-            granted, and providing the wctoken value if so.
+            granted, and providing the wctoken value if so.  See also
+            :py:meth:`connect`.
 
         """
         targetqs = urlencode({'appid': self.app_id, 'redirect': callback_url})
@@ -213,7 +235,7 @@ class HealthVaultConn(object):
                '</info>'
         payload = '<wc-request:request xmlns:wc-request="urn:com.microsoft.wc.request">' + header + info + '</wc-request:request>'
 
-        (response, body, tree) = self._sendRequest(payload)
+        (response, body, tree) = self._send_request(payload)
 
         token_elt = tree.find('{urn:com.microsoft.wc.methods.response.CreateAuthenticatedSessionToken}info/token')
         if token_elt is None:
@@ -239,7 +261,7 @@ class HealthVaultConn(object):
 
         return (record_id_elt.text, person_id_elt.text)
 
-    def _sendRequest(self, payload):
+    def _send_request(self, payload):
         """
         Send payload as a request to the HealthVault API.
 
@@ -251,6 +273,7 @@ class HealthVaultConn(object):
             body:  string with body of response
             elementtree: ElementTree.Element object with parsed body
 
+        :param string payload: The request body
         :raises: HealthVaultException if HTTP response status is not 200 or status in parsed response is not 0.
         """
         conn = httplib.HTTPSConnection(self.server, 443)
@@ -258,7 +281,7 @@ class HealthVaultConn(object):
         conn.putheader('Content-Type', 'text/xml')
         conn.putheader('Content-Length', '%d' % len(payload))
         conn.endheaders()
-        logger.debug("Posting request: %s" % payload)
+        #logger.debug("Posting request: %s" % payload)
         try:
             conn.send(payload)
         except socket.error, v:
@@ -276,9 +299,12 @@ class HealthVaultConn(object):
         status = int(tree.find('status/code').text)
         if status != 0:
             msg = tree.find("status/error/message").text
-            logger.error("HealthVault error. status=%d, message=%s, request=%s, response=%s" % (status, msg, prettyxml(payload), prettyxml(body)))
-            raise HealthVaultException("Non-success status from HealthVault API.  Status=%d, message=%s" % (status, msg))
-        logger.debug("response body=%r" % body)
+            logger.error("HealthVault error. status=%d, message=%s, request=%s, response=%s" % (status, msg, pretty_xml(payload), pretty_xml(body)))
+            raise HealthVaultException(
+                "Non-success status from HealthVault API.  Status=%d, message=%s" % (status, msg),
+                code=status
+            )
+        #logger.debug("response body=%r" % body)
         return (response, body, tree)
 
         #HVAULT DataTypes
@@ -295,12 +321,12 @@ class HealthVaultConn(object):
         Given the <info>...</info> part of a request, wrap it with all the identification and auth stuff
         to form a complete request, call sendRequest() to send it, and return whatever sendRequest returns.
 
-        :param method_name: String with the name of the method to call, e.g. "GetThings"
-        :param info: String with the <info> part of the request
-        :param method_version: Override the default method version (1)
-        :param use_record_id: Whether to include the <record-id> in the request (default: True)
-        :param use_target_person_id: Whether to include the <target-person-id> in the request (default: False)
-        :param use_wctoken: Whether to include the wctoken (<auth-token>) in the request (default: True)
+        :param string method_name: The name of the method to call, e.g. "GetThings"
+        :param string info: The <info> part of the request
+        :param integer method_version: Override the default method version (1)
+        :param boolean use_record_id: Whether to include the <record-id> in the request (default: True)
+        :param boolean use_target_person_id: Whether to include the <target-person-id> in the request (default: False)
+        :param boolean use_wctoken: Whether to include the wctoken (<auth-token>) in the request (default: True)
         """
         # https://platform.healthvault-ppe.com/platform/XSD/request.xsd
 
@@ -344,23 +370,13 @@ class HealthVaultConn(object):
         hauthxml = '<auth><hmac-data algName="HMACSHA1">' + hashedheader64.strip() + '</hmac-data></auth>'
         payload = '<wc-request:request xmlns:wc-request="urn:com.microsoft.wc.request">' + hauthxml + header + info + '</wc-request:request>'
 
-        return self._sendRequest(payload)
-
-    def get_application_info(self):
-        (response, body, tree) = self._build_and_send_request("GetApplicationInfo", "<info/>", method_version=2)
-        print prettyxml(body)
-
-    def get_authorized_people(self):
-        info = '<info><parameters></parameters></info>'
-
-        (response, body, tree) = self._build_and_send_request("GetAuthorizedPeople", info)
-        print prettyxml(body)
+        return self._send_request(payload)
 
     def parse_notification_body(self, body):
         """Given the body of a notification event request from HealthVault,
         parse it and return the data as nested dictionaries.
 
-        :param body: A string containing the XML from the body of the notification.
+        :param string body: The XML from the body of the notification.
         :raises: HealthVaultException if a problem is found in the content.
         :returns: A list of dictionaries, something like this.
 
@@ -372,7 +388,7 @@ class HealthVaultConn(object):
                 'record_id': 'a UUID representing a record',
                 'things': [ 'a', 'list', 'of', 'thing-type', 'uuids'],
             },
-            }, ...]
+            ...]
         """
 
         """From some sample MS code, here's a template of what an incoming notification
@@ -406,29 +422,70 @@ class HealthVaultConn(object):
         result = [parse_notification(n) for n in tree.findall('notification')]
         return result
 
+    def associate_alternate_id(self, idstring):
+        """Associate some identification string from your application to the current person.
 
+        This uses `AssociateAlternateId <https://platform.healthvault-ppe.com/platform/XSD/method-associatealternateid.xsd>`_
+
+        :param string idstring: The (case-sensitive) identifier to set.
+        :raises: :py:exc:`HealthVaultException` on errors. Two possible ones here:
+
+        * ALTERNATE_IDS_LIMIT_EXCEEDED (141) If the account already has the maximum allowable number of alternate ids
+            (which appears to be 100).
+        * DUPLICATE_ALTERNATE_ID (139) If the application has already associated this alternate id with a person and record.
+
+        See also :py:meth:`get_alternate_ids`.
+        """
+        info = '<info><alternate-id>%s</alternate-id></info>' % idstring
+        self._build_and_send_request("AssociateAlternateId", info)
+
+    def get_alternate_ids(self):
+        """Return the list of alternate IDs that have been associated with this person by this application.
+
+        This uses `GetAlternateIds <https://platform.healthvault-ppe.com/platform/XSD/response-getalternateids.xsd>`_
+
+        :returns: A list of strings.
+        """
+        (response, body, tree) = self._build_and_send_request("GetAlternateIds", "<info/>")
+        info = tree.find("{urn:com.microsoft.wc.methods.response.GetAlternateIds}info")
+        return [elt.text for elt in info.findall("alternate-ids/alternate-id")]
+
+    def disassociate_alternate_id(self, idstring):
+        """Disassociate some identification string from your application from the current person.
+
+        This uses `DisassociateAlternateId <https://platform.healthvault-ppe.com/platform/XSD/method-disassociatealternateid.xsd>`_
+
+        :param string idstring: The (case-sensitive) identifier to disassociate.
+        :raises: :py:exc:`HealthVaultException` on errors. Example:
+
+        * ALTERNATE_ID_NOT_FOUND (140) If the alternate id has not been associated with a person and record.
+
+        See also :py:meth:`associate_alternate_id` and :py:meth:`get_alternate_ids`.
+        """
+        info = '<info><alternate-id>%s</alternate-id></info>' % idstring
+        self._build_and_send_request("DisassociateAlternateId", info)
 
     def subscribe_to_event(self, url, thing_types):
         """Create a subscription at HealthVault to be called back when an event happens.
 
         Can only be used when the person is online.
 
-        Authorization
+        Authorization:
         The user must have granted the application offline read access to the data type that the subscription refers to.
 
-        Number of subscriptions
+        Number of subscriptions:
         An application can only register 25 subscriptions at a time. This number is subject to change.
 
         The caller should save the returned GUID and notification key, to identify and validate
         incoming notifications later.
 
-        For more information, see this blog entry
-        http://blogs.msdn.com/b/ericgu/archive/2011/01/20/healthvault-event-notifications.aspx
-        and this documentation page
-        http://msdn.microsoft.com/en-us/library/gg681193.aspx
+        For more information, see `this blog entry
+        <http://blogs.msdn.com/b/ericgu/archive/2011/01/20/healthvault-event-notifications.aspx>`_
+        and `this documentation page
+        <http://msdn.microsoft.com/en-us/library/gg681193.aspx>`_.
 
-        :param thing_types: An iterable of strings with UUIDs of Thing types to be notified of changes in
-        :param url: The URL that HealthVault will call when an event happens. Must begin with https:
+        :param iterable thing_types: strings with UUIDs of Thing types to be notified of changes in
+        :param URL url: The URL that HealthVault will call when an event happens. Must begin with https:
         :returns: (sub_id, notification_key): The GUID of the new subscription (string), and the base64-encoded
             notification key for the subscription.
         """
@@ -506,9 +563,13 @@ class HealthVaultConn(object):
         return (sub_id, notification_key)
 
     def get_event_subscriptions(self):
-        """Get the list of our event subscriptions from HealthVault
+        """Get the list of our `event subscriptions
+        <https://platform.healthvault-ppe.com/platform/XSD/subscription.xsd>`_ from HealthVault
+
+        :returns: List of dictionaries containing subscription information.
+
+        See also :py:meth:`subscribe_to_event`.
         """
-        # This request has no content
         # And apparently we should NOT include the wctoken
         # https://platform.healthvault-ppe.com/platform/XSD/response-geteventsubscriptions.xsd
         (response, body, tree) = self._build_and_send_request('GetEventSubscriptions', '<info/>', use_wctoken=False)
@@ -517,30 +578,31 @@ class HealthVaultConn(object):
 
     def unsubscribe_to_event(self, sub_id):
         """
-        Delete one subscription
+        Delete one `subscription
+        <https://platform.healthvault-ppe.com/platform/XSD/subscription.xsd>`_
 
-        :param sub_id: String containing the ID of a subscription.
+        :param string sub_id: The ID of a subscription.
+
+        See also :py:meth:`.subscribe_to_event`.
         """
         info = '<info><subscription-id>%s</subscription-id></info>' % sub_id
         self._build_and_send_request('UnsubscribeToEvent', info, use_wctoken=False)
         # No need to look at response - either it worked or not, and if not, an exception will have been raised
 
-    def getThings(self, hv_datatype, min_date=None, max_date=None, filter=None):
-        """Call the getThings API to retrieve some things (data items).
+    def get_things(self, hv_datatype, min_date=None, max_date=None, filter=None):
+        """Call the get_things API to retrieve some things (data items).
 
-        :param hv_datatype: string, the UUID representing the data type to retrieve.
-        :param min_date: Only things with an effective datetime after this are returned.
-        :type min_date: datetime.datetime
-        :param max_date: Only things with an effective datetime before this are returned.
-        :type max_date: datetime.datetime
-        :param filter: string, XML to be added to the filter section of the query to
+        See also
+        `Querying Data in HealthVault <http://msdn.microsoft.com/en-us/library/jj582876.aspx>`_
+
+        :param string hv_datatype: The UUID representing the data type to retrieve.
+        :param datetime.datetime min_date: Only things with an effective datetime after this are returned.
+        :param datetime.datetime max_date: Only things with an effective datetime before this are returned.
+        :param string filter: XML to be added to the filter section of the query to
            further limit the data returned.
         :returns: ElementTree Element object containing the <wc:info> element of the response
         :raises: HealthVaultException if the request doesn't succeed with a 200 status
             or the status in the XML response is non-zero.
-
-        See also http://msdn.microsoft.com/en-us/library/jj582876.aspx on
-        Querying Data in HealthVault.
         """
 
         #QUERY INFO
@@ -563,9 +625,9 @@ class HealthVaultConn(object):
         return info
 
 
-    def getBasicDemographicInfo(self):
-        """Gets basic demographic info (v2):
-        http://developer.healthvault.com/pages/types/type.aspx?id=3b3e6b16-eb69-483c-8d7e-dfe116ae6092
+    def get_basic_demographic_info(self):
+        """Gets `basic demographic info (v2)
+        <http://developer.healthvault.com/pages/types/type.aspx?id=3b3e6b16-eb69-483c-8d7e-dfe116ae6092>`_
 
         :returns: a dictionary - some values might be None if they're not returned by HealthVault.
 
@@ -577,7 +639,7 @@ class HealthVaultConn(object):
         :raises: HealthVaultException if the request fails in some way.
         """
 
-        info = self.getThings(DataType.basic_demographic_data)
+        info = self.get_things(DataType.basic_demographic_data)
 
         basic = info.find('group/thing/data-xml/basic')
         return dict(
@@ -589,9 +651,23 @@ class HealthVaultConn(object):
             state=text_or_none(basic,'state/text')
         )
 
-    def getBloodPressureMeasurements(self, min_date=None, max_date=None):
-        """Get Blood Pressure measurements.
+    def get_blood_glucose_measurements(self, min_date=None, max_date=None):
+        """Get `Blood Glucose Measurements
+        <http://developer.healthvault.com/pages/types/type.aspx?id=879e7c04-4e8a-4707-9ad3-b054df467ce4>`_
 
+        :param datetime.datetime min_date: Only things with an effective datetime after this are returned.
+        :param datetime.datetime max_date: Only things with an effective datetime before this are returned.
+        :returns: a list of dictionaries.
+        """
+        info = self.get_things(DataType.blood_glucose_measurement, min_date, max_date)
+        return [parse_blood_glucose(item) for item in info.findall('group/thing/data-xml/blood-glucose')]
+
+    def get_blood_pressure_measurements(self, min_date=None, max_date=None):
+        """Get `Blood Pressure measurements
+        <http://developer.healthvault.com/pages/types/type.aspx?id=ca3c57f4-f4c1-4e15-be67-0a3caf5414ed>`_
+
+        :param datetime.datetime min_date: Only things with an effective datetime after this are returned.
+        :param datetime.datetime max_date: Only things with an effective datetime before this are returned.
         :returns: a list of dictionaries
 
         Example::
@@ -614,7 +690,7 @@ class HealthVaultConn(object):
         :type max_date: datetime.datetime
         :raises: HealthVaultException if the request fails in some way.
         """
-        info = self.getThings(DataType.blood_pressure_measurements, min_date, max_date)
+        info = self.get_things(DataType.blood_pressure_measurements, min_date, max_date)
 
         things = []
         for thing in info.findall('group/thing/data-xml/blood-pressure'):
@@ -627,13 +703,23 @@ class HealthVaultConn(object):
             ))
         return things
 
-    def getHeightMeasurements(self, min_date=None, max_date=None):
-        info = self.getThings(DataType.height_measurements, min_date, max_date)
+    def get_height_measurements(self, min_date=None, max_date=None):
+        """Get `Height measurements
+        <http://developer.healthvault.com/pages/types/type.aspx?id=40750a6a-89b2-455c-bd8d-b420a4cb500b>`_
+
+        :param datetime.datetime min_date: Only things with an effective datetime after this are returned.
+        :param datetime.datetime max_date: Only things with an effective datetime before this are returned.
+        :returns: list of dictionaries
+        """
+        info = self.get_things(DataType.height_measurements, min_date, max_date)
         return [parse_height(e) for e in info.findall('group/thing/data-xml/height')]
 
-    def getWeightMeasurements(self, min_date=None, max_date=None):
-        """Get all weight measurements.
+    def get_weight_measurements(self, min_date=None, max_date=None):
+        """Get all `weight measurements
+        <http://developer.healthvault.com/pages/types/type.aspx?id=3d34d87e-7fc1-4153-800f-f56592cb0d17>`_
 
+        :param datetime.datetime min_date: Only things with an effective datetime after this are returned.
+        :param datetime.datetime max_date: Only things with an effective datetime before this are returned.
         :returns: a list of dictionaries
 
         Example::
@@ -644,17 +730,14 @@ class HealthVaultConn(object):
               },...
              ]
 
-        :param min_date: Only things with an effective datetime after this are returned.
-        :type min_date: datetime.datetime
-        :param max_date: Only things with an effective datetime before this are returned.
-        :type max_date: datetime.datetime
         :raises: HealthVaultException if the request fails in some way.
         """
-        info = self.getThings(DataType.weight_measurements, min_date, max_date)
+        info = self.get_things(DataType.weight_measurements, min_date, max_date)
         return [parse_weight(e) for e in info.findall('group/thing/data-xml/weight')]
 
-    def getDevices(self):
-        """Get devices.
+    def get_devices(self):
+        """Get `devices
+        <http://developer.healthvault.com/pages/types/type.aspx?id=ef9cf8d5-6c0b-4292-997f-4047240bc7be>`_
 
         :returns: a list of dictionaries.
 
@@ -686,29 +769,29 @@ class HealthVaultConn(object):
 
         :raises: HealthVaultException if the request fails in some way.
         """
-        info = self.getThings(DataType.devices)
+        info = self.get_things(DataType.devices)
         # http://developer.healthvault.com/sdk/docs/urn.com.microsoft.wc.thing.equipment.device.1.inlinetype.html
         return [parse_device(e) for e in info.findall('group/thing/data-xml/device')]
 
-    def getExercise(self, min_date=None, max_date=None):
-        """
-        http://developer.healthvault.com/sdk/docs/urn.com.microsoft.wc.thing.exercise.2.html
-        Records the completion of an exercise.
+    def get_exercise(self, min_date=None, max_date=None):
+        """Returns `exercise records
+        <http://developer.healthvault.com/sdk/docs/urn.com.microsoft.wc.thing.exercise.2.html>`_
 
-        Type Name: Exercise
-        Type Id: 85a21ddb-db20-4c65-8d30-33c899ccf612
-        Effective Date Element: when
-        Type Root Element: urn:com.microsoft.wc.thing.exercise:exercise
-
-        Uses Other Data Section of Thing: False
-        Remarks
-
+        :param datetime.datetime min_date: Only things with an effective datetime after this are returned.
+        :param datetime.datetime max_date: Only things with an effective datetime before this are returned.
         :returns: list of dictionaries with exercise things
         """
-        info = self.getThings(DataType.exercise, min_date, max_date)
+        info = self.get_things(DataType.exercise, min_date, max_date)
         return [parse_exercise(e) for e in info.findall('group/thing/data-xml/exercise')]
 
-    def getSleepSessions(self, min_date=None, max_date=None):
-        info = self.getThings(DataType.sleep_sessions, min_date, max_date)
+    def get_sleep_sessions(self, min_date=None, max_date=None):
+        """Returns `sleep session records
+        <http://developer.healthvault.com/pages/types/type.aspx?id=11c52484-7f1a-11db-aeac-87d355d89593>`_.
+
+        :param datetime.datetime min_date: Only things with an effective datetime after this are returned.
+        :param datetime.datetime max_date: Only things with an effective datetime before this are returned.
+        :returns: list of dictionaries with sleep sessions.
+        """
+        info = self.get_things(DataType.sleep_sessions, min_date, max_date)
         return [parse_sleep_session(s) for s in info.findall('group/thing/data-xml/sleep-am')]
 

@@ -7,6 +7,10 @@ In order to communicate with HealthVault, you need a signed certificate uploaded
 to HealthVault for your application, and the corresponding public and private keys
 configured in your application.
 
+(The HealthVault documentation refers to uploading a public key, but in fact
+what needs to be uploaded is a certificate, which contains a public key plus
+a cryptographic signature.)
+
 The certificate is uploaded as a DER-encoded certificate file. The public and
 private keys are configured for `python-healthvault` as long Python integers.
 

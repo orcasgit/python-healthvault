@@ -1,11 +1,15 @@
 """Some utilities for handling XML"""
 import StringIO
 import datetime
+import logging
 
 import xml.etree.ElementTree as ET
 
 
-def prettyxml(xml):
+logger = logging.getLogger(__name__)
+
+
+def pretty_xml(xml):
     """Given a string with XML, return a string with the XML formatted pretty"""
     from xml.dom import minidom
     dom = minidom.parseString(xml)
@@ -19,7 +23,7 @@ def elt_to_string(elt):
     s = s.getvalue()
     # Now s has the XML as one long string, but that's hard to read.
     # This is inefficient, but we only use it when debugging.
-    return prettyxml(s)
+    return pretty_xml(s)
 
 # Little utils to help pull data out of the XML
 def text_list(elt, xpath):
@@ -423,12 +427,12 @@ def parse_http_notification_channel(elt):
 
 def parse_record_item_changed_event(elt):
     return dict(
-        filters=[parse_record_item_changed_event_filter(f) for f in elt.findall('filter')]
+        filters=[parse_record_item_changed_event_filter(f) for f in elt.findall('filters/filter')]
     )
 
 def parse_record_item_changed_event_filter(elt):
     return dict(
-        type_ids=[text_or_none(item, 'type-id') for item in elt.findall('type-ids/type-id')]
+        type_ids=[text_or_none(item, 'type-id') for item in elt.findall('type-ids')]
     )
 
 def parse_notification(elt):
@@ -451,3 +455,65 @@ def parse_record_change_notification(elt):
 
 def parse_notification_thing(elt):
     return text_or_none(elt, 'thing-id')
+
+def parse_blood_glucose(elt):
+    # http://developer.healthvault.com/pages/types/type.aspx?id=879e7c04-4e8a-4707-9ad3-b054df467ce4
+
+    """
+     <blood-glucose>
+  <when>
+    <date>
+      <y>2006</y>
+      <m>1</m>
+      <d>1</d>
+    </date>
+    <time>
+      <h>9</h>
+      <m>30</m>
+      <s>0</s>
+      <f>0</f>
+    </time>
+  </when>
+  <value>
+    <mmolPerL>7.444444</mmolPerL>
+    <display units="mmolPerL">7.444444</display>
+  </value>
+  <glucose-measurement-type>
+    <text>Whole blood</text>
+    <code>
+      <value>wb</value>
+      <family>wc</family>
+      <type>glucose-measurement-type</type>
+      <version>1</version>
+    </code>
+  </glucose-measurement-type>
+  <outside-operating-temp>true</outside-operating-temp>
+  <is-control-test>true</is-control-test>
+  <normalcy>1</normalcy>
+  <measurement-context>
+    <text>Before meal</text>
+    <code>
+      <value>BeforeMeal</value>
+      <family>wc</family>
+      <type>glucose-measurement-context</type>
+      <version>1</version>
+    </code>
+  </measurement-context>
+</blood-glucose>
+    """
+    return dict(
+        when=when_to_datetime(elt.find('when')),
+        value=parse_blood_glucose_value(elt.find('value')),
+        glucose_measurement_type=parse_codable_value(elt.find('glucose-measurement-type')),
+        outside_operating_temperature=boolean_or_none(elt, 'outside-operating_temp'),
+        is_control_test=boolean_or_none(elt, 'is-control-test'),
+        normalcy=int_or_none(elt, 'normalcy'),
+        measurement_context=parse_optional_item(elt, 'measurement-context', parse_codable_value),
+    )
+
+def parse_blood_glucose_value(elt):
+    # http://developer.healthvault.com/pages/types/type.aspx?id=3e730686-781f-4616-aa0d-817bba8eb141#blood-glucose-value
+    return dict(
+        mmolperl=parse_positive_double(elt.find('mmolPerL')),
+        display=parse_optional_item(elt, 'display', parse_display_value)
+    )

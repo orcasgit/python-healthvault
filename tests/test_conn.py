@@ -106,7 +106,7 @@ class ConnTests(TestCase):
                         app_id="1", app_thumbprint="2", public_key=TEST_PUBLIC_KEY, private_key=TEST_PRIVATE_KEY,
                         wctoken=WC_TOKEN, server="6", shell_server="7"
                     )
-        with mock.patch.object(c, '_sendRequest') as sendRequest:
+        with mock.patch.object(c, '_send_request') as sendRequest:
             c._build_and_send_request(method_name="METHOD", info="<info>BOO</info>")
         payload = sendRequest.call_args[0][0]
         request = ET.fromstring(payload)
@@ -125,7 +125,7 @@ class ConnTests(TestCase):
         """Given one of the methods that gets some XML from HealthVault and returns a dictionary or list,
         verify it returns what we expect
 
-        :param xml: The XML that getThings will return to the method under test
+        :param xml: The XML that get_things will return to the method under test
         :param expected: The expected return value of the method under test
         :param methodname: The name of the method under test
         """
@@ -138,7 +138,7 @@ class ConnTests(TestCase):
                         wctoken="5", server="6", shell_server="7"
                     )
         # call get_basic_demographic_info(), mocking the actual network call
-        with mock.patch.object(HealthVaultConn, 'getThings') as getThings:
+        with mock.patch.object(HealthVaultConn, 'get_things') as getThings:
             getThings.return_value = ET.fromstring(xml)
             retval = getattr(c, methodname)()
 #        print retval
@@ -155,7 +155,7 @@ class ConnTests(TestCase):
                     '</postcode><state><text>NC</text></state></basic><common /></data-xml></thing></group></wc:info>'
         expected_value = {'birthyear': 1963, 'state': 'NC', 'country_text': 'United States', 'postcode': '27510',
                           'country_code': 'US', 'gender': 'm'}
-        self.verify_get_data_api(test_body, expected_value, 'getBasicDemographicInfo')
+        self.verify_get_data_api(test_body, expected_value, 'get_basic_demographic_info')
 
     def test_blood_pressure_measurements(self):
         test_body = '<wc:info xmlns:wc="urn:com.microsoft.wc.methods.response.GetThings">' \
@@ -167,7 +167,7 @@ class ConnTests(TestCase):
                     '</data-xml></thing></group></wc:info>'
         expected_value = [{'systolic': 160, 'when': datetime.datetime(2012, 11, 12, 11, 24),
                            'irregular_heartbeat': None, 'pulse': 16, 'diastolic': 80}]
-        self.verify_get_data_api(test_body, expected_value, 'getBloodPressureMeasurements')
+        self.verify_get_data_api(test_body, expected_value, 'get_blood_pressure_measurements')
 
     def test_devices(self):
         test_body = '<wc:info xmlns:wc="urn:com.microsoft.wc.methods.response.GetThings">' \
@@ -206,7 +206,7 @@ class ConnTests(TestCase):
                            'description': 'Mark Boyce got a Peak flow meter', 'serial_number': '23456543',
                            'model': 'PF100', 'when': datetime.datetime(2008, 1, 1, 10, 30),
                            'device_name': 'Digital Peak Flow Meter'}]
-        self.verify_get_data_api(test_body, expected_value, 'getDevices')
+        self.verify_get_data_api(test_body, expected_value, 'get_devices')
 
     def test_exercise(self):
         test_body = '<wc:info xmlns:wc="urn:com.microsoft.wc.methods.response.GetThings">' \
@@ -234,7 +234,7 @@ class ConnTests(TestCase):
                                                                                       'family': ['wc'],
                                                                                       'value': 'Count'}]},
                                                  'value': 5280.0}}]}]
-        self.verify_get_data_api(test_body, expected_value, 'getExercise')
+        self.verify_get_data_api(test_body, expected_value, 'get_exercise')
 
     def test_weights(self):
         test_body = '<wc:info xmlns:wc="urn:com.microsoft.wc.methods.response.GetThings">' \
@@ -246,4 +246,4 @@ class ConnTests(TestCase):
                     '<display units="lbs" units-code="lb">26.355999999999998</display></value></weight><common />' \
                     '</data-xml></thing></group></wc:info>'
         expected_value = [{'kg': 11.954880503984493, 'lbs': None, 'when': datetime.datetime(2012, 11, 12, 11, 24)}]
-        self.verify_get_data_api(test_body, expected_value, 'getWeightMeasurements')
+        self.verify_get_data_api(test_body, expected_value, 'get_weight_measurements')
