@@ -8,7 +8,7 @@ to HealthVault for your application, and the corresponding public and private ke
 configured in your application.
 
 The certificate is uploaded as a DER-encoded certificate file. The public and
-private keys are configured for python-healthvault as long Python integers.
+private keys are configured for `python-healthvault` as long Python integers.
 
 The certificate can be self-signed.
 

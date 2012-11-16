@@ -3,8 +3,8 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-Welcome to python-healthvault's documentation!
-==============================================
+Welcome to python-healthvault
+=============================
 
 Contents:
 
@@ -16,26 +16,29 @@ Contents:
 
 This is a library to help Python programs access Microsoft's HealthVault.
 
-If you're not familiar with HealthVault, start here: http://msdn.microsoft.com/en-us/healthvault/default
+If you're not familiar with HealthVault, start at
+the `HealthVault Developer Center <http://msdn.microsoft.com/en-us/healthvault/default>`_.
 
-- Read this early and repeatedly: HealthVault platform technical overview http://msdn.microsoft.com/en-us/healthvault/jj127438
-- Also: HealthVault development basics http://msdn.microsoft.com/en-us/healthvault/jj127014.aspx
+- Read this early and repeatedly: `HealthVault platform technical overview <http://msdn.microsoft.com/en-us/healthvault/jj127438>`_
+- Also: `HealthVault development basics <http://msdn.microsoft.com/en-us/healthvault/jj127014.aspx>`_
 
-I think you go to the HealthVault Application Configuration Center (ACC) http://msdn.microsoft.com/en-us/library/jj582782.aspx
+Go to the `HealthVault Application Configuration Center (ACC) <http://msdn.microsoft.com/en-us/library/jj582782.aspx>`_
 to create your account and define a HealthVault application.
 
-Create a new public/private key pair and upload the public key to the ACC http://msdn.microsoft.com/en-us/library/ff803601.aspx
-
+Create a new public/private key pair and upload the public key to the ACC - see :ref:`keys`
+and `the doc on uploading your public key <http://msdn.microsoft.com/en-us/library/ff803601.aspx>`_.
 
 If you're developing a web application, you'll start by redirecting your user to the HealthVault APPAUTH
-link to authorize your app to access their data.
-When that's done, MS will redirect the user back to a URL in your app, passing an auth token
-(http://msdn.microsoft.com/en-us/library/ff803620.aspx#APPAUTH) which your app will save.
+link to authorize your app to access their data.  You can call
+:py:meth:`healthvaultlib.HealthVaultConn.authorization_url`
+to get the URL to send them to.
+When that's done, MS will redirect the user back to a URL in your app, passing an `auth token
+<http://msdn.microsoft.com/en-us/library/ff803620.aspx#APPAUTH>`_ which your app will save.
 
-Next, construct a `HealthVaultConn` object.  You'll use
+Next, construct a :py:class:`HealthVaultConn` object.  You'll use
 that object to access the user's HealthVault data.
 
-To construct a `HealthVaultConn` object, you'll need the following information:
+To construct a :py:class:`HealthVaultConn` object, you'll need the following information:
 
 * Your public and private keys - you create these; see :ref:`keys`.
 * Your APP ID - a UUID, this is assigned when you create your app on the ACC

@@ -8,3 +8,5 @@ Connection and calls
 
 .. autoclass:: healthvaultlib.healthvault.HealthVaultConn
     :members:
+
+.. autoclass:: healthvaultlib.healthvault.HealthVaultException

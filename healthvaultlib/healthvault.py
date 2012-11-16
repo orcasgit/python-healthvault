@@ -63,14 +63,31 @@ def _msg_time():
 
 
 class HealthVaultException(Exception):
+    """This exception is raised for any error in the python-healthvault library.
+
+    """
     pass
 
 
 class HealthVaultConn(object):
-    """A HealthVaultConn object is used to access data for one HealthVault record.
+    """A HealthVaultConn object is used to access data for one person from one HealthVault record.
 
     When the HealthVaultConn object is created, it connects to the server to verify the credentials it was given,
     and retrieve the record ID corresponding to the WCTOKEN.
+
+    Often you won't have the WCTOKEN yet. Leave it out and the HealthVaultConn object will get an
+    authorized session to HealthVault but not yet get the record ID.
+
+    To get a WCTOKEN, also known as the user auth token, your web application needs to redirect
+    the user to HealthVault to grant your application authorization to access their data. You can
+    use :py:meth:`.authorization_url` to get the full URL to redirect the user to. When
+    that's done, HealthVault will redirect the user to your URL (that you passed to :py:meth:`.authorization_url`)
+    and add query parameters including the auth token. Your app needs to accept that request and
+    parse it for the user auth token.
+
+    Then call :py:meth:`.connect` passing the user's auth token, and HealthVaultConn will verify access and
+    retrieve the record id and person id for the record and person that the user has granted
+    access to.
 
     :param app_id: string, the application ID (a UUID)
     :param app_thumbprint: string, the thumbprint displayed in the ACC for the public key we're using
@@ -81,9 +98,9 @@ class HealthVaultConn(object):
     :param shell_server: string (optional), the hostname of the shell redirect server to connect to, defaults to
         "account.healthvault-ppe.com", the pre-production US shell server
     :param wctoken: string, the token returned from APPAUTH. If not available, leave it out and call
-       .connect(wctoken) later.
+       :py:meth:`.connect(wctoken)` later.
 
-    :raises: HealthVaultException if there's any problem connecting to HealthVault or getting authorized.
+    :raises: :py:exc:`HealthVaultException` if there's any problem connecting to HealthVault or getting authorized.
     """
 
     def __init__(self, app_id, app_thumbprint, public_key, private_key, server=None, shell_server=None, wctoken=None):
@@ -96,10 +113,15 @@ class HealthVaultConn(object):
         self.server = server or 'platform.healthvault-ppe.com'
         self.shell_server = shell_server or "account.healthvault-ppe.com"
 
-        self.sharedsec = None
+        self.sharedsec = str(randint(2 ** 64, 2 ** 65 - 1))
         self.record_id = None
 
         self.authorized = False
+
+        if not isinstance(public_key, long):
+            raise ValueError("public key must be a long; it's %r" % public_key)
+        if not isinstance(private_key, long):
+            raise ValueError("public key must be a long; it's %r" % private_key)
 
         # We can get our auth token now, it's not specific to wctoken
         # This will catch it early if our keys are wrong or something like that
@@ -110,7 +132,7 @@ class HealthVaultConn(object):
 
     def is_authorized(self):
         """Return True if we've been authorized to HealthVault for a user.
-        If not, connect() needs to be called before attempting online access.
+        If not, :py:meth:`.connect()` needs to be called before attempting online access.
         Offline access might still be possible.
         """
         return self.authorized
@@ -156,9 +178,7 @@ class HealthVaultConn(object):
 
         crypto = HVCrypto(self.public_key, self.private_key)
 
-        sharedsec = str(randint(2 ** 64, 2 ** 65 - 1))
-        self.sharedsec = sharedsec
-        sharedsec64 = base64.encodestring(sharedsec)
+        sharedsec64 = base64.encodestring(self.sharedsec)
 
         content = '<content>'\
                       '<app-id>' + self.app_id + '</app-id>'\
@@ -193,7 +213,7 @@ class HealthVaultConn(object):
                '</info>'
         payload = '<wc-request:request xmlns:wc-request="urn:com.microsoft.wc.request">' + header + info + '</wc-request:request>'
 
-        (response, body, tree) = self.sendRequest(payload)
+        (response, body, tree) = self._sendRequest(payload)
 
         token_elt = tree.find('{urn:com.microsoft.wc.methods.response.CreateAuthenticatedSessionToken}info/token')
         if token_elt is None:
@@ -206,7 +226,7 @@ class HealthVaultConn(object):
         """
         Returns (selected_record_id, person_id)
         """
-        (response, body, tree) = self.build_and_send_request("GetPersonInfo", "<info/>", use_record_id=False)
+        (response, body, tree) = self._build_and_send_request("GetPersonInfo", "<info/>", use_record_id=False)
 
         record_id_elt = tree.find('{urn:com.microsoft.wc.methods.response.GetPersonInfo}info/person-info/selected-record-id')
         if record_id_elt is None:
@@ -219,7 +239,7 @@ class HealthVaultConn(object):
 
         return (record_id_elt.text, person_id_elt.text)
 
-    def sendRequest(self, payload):
+    def _sendRequest(self, payload):
         """
         Send payload as a request to the HealthVault API.
 
@@ -267,7 +287,7 @@ class HealthVaultConn(object):
         #conditions = "7ea7a1f9-880b-4bd4-b593-f5660f20eda8"
         #weightmeasurementype = "3d34d87e-7fc1-4153-800f-f56592cb0d17"
 
-    def build_and_send_request(self, method_name, info, method_version=1, use_record_id=True,
+    def _build_and_send_request(self, method_name, info, method_version=1, use_record_id=True,
                                use_target_person_id=False, use_wctoken=True):
         """
         (internal method)
@@ -324,16 +344,16 @@ class HealthVaultConn(object):
         hauthxml = '<auth><hmac-data algName="HMACSHA1">' + hashedheader64.strip() + '</hmac-data></auth>'
         payload = '<wc-request:request xmlns:wc-request="urn:com.microsoft.wc.request">' + hauthxml + header + info + '</wc-request:request>'
 
-        return self.sendRequest(payload)
+        return self._sendRequest(payload)
 
     def get_application_info(self):
-        (response, body, tree) = self.build_and_send_request("GetApplicationInfo", "<info/>", method_version=2)
+        (response, body, tree) = self._build_and_send_request("GetApplicationInfo", "<info/>", method_version=2)
         print prettyxml(body)
 
     def get_authorized_people(self):
         info = '<info><parameters></parameters></info>'
 
-        (response, body, tree) = self.build_and_send_request("GetAuthorizedPeople", info)
+        (response, body, tree) = self._build_and_send_request("GetAuthorizedPeople", info)
         print prettyxml(body)
 
     def parse_notification_body(self, body):
@@ -479,10 +499,9 @@ class HealthVaultConn(object):
         # use_target_person_id=False ==> Status=134, message=None
         #  but 134 is SUBSCRIPTION_INVALID 134 The subscription contains invalid data.  which is promising
         # it would be nice if it said what's invalid about it though
-        (response, body, tree) = self.build_and_send_request("SubscribeToEvent", info, use_wctoken=False)
+        (response, body, tree) = self._build_and_send_request("SubscribeToEvent", info, use_wctoken=False)
 
         info = tree.find('{urn:com.microsoft.wc.methods.response.SubscribeToEvent}info')
-        print elt_to_string(info)
         sub_id = text_or_none(info, 'subscription-id')
         return (sub_id, notification_key)
 
@@ -492,8 +511,7 @@ class HealthVaultConn(object):
         # This request has no content
         # And apparently we should NOT include the wctoken
         # https://platform.healthvault-ppe.com/platform/XSD/response-geteventsubscriptions.xsd
-        (response, body, tree) = self.build_and_send_request('GetEventSubscriptions', '<info/>', use_wctoken=False)
-        print prettyxml(body)
+        (response, body, tree) = self._build_and_send_request('GetEventSubscriptions', '<info/>', use_wctoken=False)
         info = tree.find('{urn:com.microsoft.wc.methods.response.GetEventSubscriptions}info')
         return [parse_subscription(sub) for sub in info.findall('subscriptions/subscription')]
 
@@ -504,7 +522,7 @@ class HealthVaultConn(object):
         :param sub_id: String containing the ID of a subscription.
         """
         info = '<info><subscription-id>%s</subscription-id></info>' % sub_id
-        self.build_and_send_request('UnsubscribeToEvent', info, use_wctoken=False)
+        self._build_and_send_request('UnsubscribeToEvent', info, use_wctoken=False)
         # No need to look at response - either it worked or not, and if not, an exception will have been raised
 
     def getThings(self, hv_datatype, min_date=None, max_date=None, filter=None):
@@ -539,7 +557,7 @@ class HealthVaultConn(object):
                    '<format><section>core</section><xml/></format>'\
                '</group></info>'
 
-        (response, body, tree) = self.build_and_send_request("GetThings", info)
+        (response, body, tree) = self._build_and_send_request("GetThings", info)
 
         info = tree.find('{urn:com.microsoft.wc.methods.response.GetThings}info')
         return info
@@ -684,6 +702,8 @@ class HealthVaultConn(object):
 
         Uses Other Data Section of Thing: False
         Remarks
+
+        :returns: list of dictionaries with exercise things
         """
         info = self.getThings(DataType.exercise, min_date, max_date)
         return [parse_exercise(e) for e in info.findall('group/thing/data-xml/exercise')]
