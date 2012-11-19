@@ -314,7 +314,11 @@ class Handler(BaseHTTPServer.BaseHTTPRequestHandler):
             return
 
         # We get here for any URL we don't recognize
-        print "UNHANDLED URL!!!!  %r" % self.path
+        # Let's do an actual 404
+        self.send_response(404)
+        self.end_headers()
+        self.wfile.write("Unknown URL: %r" % self.path)
+        return
 
 
 class SSLServer(BaseHTTPServer.HTTPServer):
