@@ -33,7 +33,7 @@ import xml.etree.ElementTree as ET
 from .datatypes import DataType
 from .hvcrypto import HVCrypto
 from .xmlutils import (when_to_datetime, int_or_none, text_or_none, boolean_or_none, parse_weight,
-                       parse_device, elt_to_string, parse_exercise, parse_height, parse_sleep_session, pretty_xml, parse_subscription, parse_notification, parse_blood_glucose, parse_connect_request)
+                       parse_device, elt_to_string, parse_exercise, parse_height, parse_sleep_session, pretty_xml, parse_subscription, parse_notification, parse_blood_glucose, parse_connect_request, elt_as_string)
 
 from Crypto.Random import get_random_bytes
 
@@ -240,8 +240,13 @@ class HealthVaultConn(object):
         payload = '<wc-request:request xmlns:wc-request="urn:com.microsoft.wc.request">' + header + info + '</wc-request:request>'
 
         (response, body, tree) = self._send_request(payload)
+        print elt_to_string(tree)
 
-        token_elt = tree.find('{urn:com.microsoft.wc.methods.response.CreateAuthenticatedSessionToken}info/token')
+        key = '{urn:com.microsoft.wc.methods.response.CreateAuthenticatedSessionToken}info'
+        info = tree.find(key)
+        if info is None:
+            raise HealthVaultException("No %s in response (%s)" % (key, body))
+        token_elt = info.find('token')
         if token_elt is None:
             logger.error("No session token in response.  Request=%s.  Response=%s" % (payload, body))
             raise HealthVaultException("Something wrong in response from HealthVault getting session token -"
@@ -385,59 +390,6 @@ class HealthVaultConn(object):
 
         return self._send_request(payload)
 
-    def parse_notification_body(self, body):
-        """Given the body of a notification event request from HealthVault,
-        parse it and return the data as nested dictionaries.
-
-        :param string body: The XML from the body of the notification.
-        :raises: HealthVaultException if a problem is found in the content.
-        :returns: A list of dictionaries, something like this.
-
-        Example::
-
-            [{'common':   {'subscription_id': 'a UUID'},,
-            'record_change_notification':   {
-                'person_id': 'a UUID representing a person',
-                'record_id': 'a UUID representing a record',
-                'things': [ 'a', 'list', 'of', 'thing-type', 'uuids'],
-            },
-            ...]
-
-        :note: This is untested as we were never able to get the HealthVault PPE server
-            to send any notifications.
-        """
-
-        """From some sample MS code, here's a template of what an incoming notification
-        might look like::
-
-            <wc:notifications xmlns:wc='urn:com.microsoft.wc.notification'>
-                <notification>
-                    <common>
-                        <subscription-id>{0}</subscription-id>
-                    </common>
-                    <record-change-notification>
-                        <person-id>{1}</person-id>
-                        <record-id>{2}</record-id>
-                        <things>
-                                {3}
-                        </things>
-                    </record-change-notification>
-                </notification>
-            </wc:notifications>
-
-        # Additionally, a request header might contain::
-
-            SomeHeaderName: HVEventingSharedKey subscription_id:key_version:hash_of_stuff
-
-        I'm not sure what the header name should be.
-        """
-
-        tree = ET.fromstring(body)
-
-        # https://platform.healthvault-ppe.com/platform/XSD/notification.xsd
-        result = [parse_notification(n) for n in tree.findall('notification')]
-        return result
-
     def associate_alternate_id(self, idstring):
         """Associate some identification string from your application to the current person.
 
@@ -481,131 +433,7 @@ class HealthVaultConn(object):
         info = '<info><alternate-id>%s</alternate-id></info>' % idstring
         self._build_and_send_request("DisassociateAlternateId", info)
 
-    def subscribe_to_event(self, url, thing_types):
-        """Create a subscription at HealthVault to be called back when an event happens.
-
-        Can only be used when the person is online.
-
-        Authorization:
-        The user must have granted the application offline read access to the data type that the subscription refers to.
-
-        Number of subscriptions:
-        An application can only register 25 subscriptions at a time. This number is subject to change.
-
-        The caller should save the returned GUID and notification key, to identify and validate
-        incoming notifications later.
-
-        For more information, see `this blog entry
-        <http://blogs.msdn.com/b/ericgu/archive/2011/01/20/healthvault-event-notifications.aspx>`_
-        and `this documentation page
-        <http://msdn.microsoft.com/en-us/library/gg681193.aspx>`_.
-
-        :param iterable thing_types: strings with UUIDs of Thing types to be notified of changes in
-        :param URL url: The URL that HealthVault will call when an event happens. Must begin with https:
-        :returns: (sub_id, notification_key): The GUID of the new subscription (string), and the base64-encoded
-            notification key for the subscription.
-        """
-
-        # http://blogs.msdn.com/b/ericgu/archive/2011/01/20/healthvault-event-notifications.aspx
-        # http://developer.healthvault.com/pages/methods/methods.aspx
-        # https://platform.healthvault-ppe.com/platform/XSD/method-subscribetoevent.xsd
-        # https://platform.healthvault-ppe.com/platform/XSD/response-subscribetoevent.xsd
-        # https://platform.healthvault-ppe.com/platform/XSD/subscription.xsd
-
-        if not url.startswith("https://"):
-            raise ValueError("URL for subscribe_to_events must start with https:// but %s does not." % url)
-
-        # Notification key
-        # <summary>The base64 encoded key bytes.</summary>
-        # <remarks>
-        # The length of the key must be 64 bytes before any base64 encoding is applied. The key is used by the
-        # HealthVault service as the key input to the HMACSHA256 algorithm. The hash that is output by the algorithm
-        # is sent with notifications that HealthVault delivers to the subscription's notification channel. If a key
-        # is changed, the version key id should also be changed so that the notification handler can support both
-        # keys during the changeover period.
-
-        # We just generate a shared key randomly
-        keybytes = get_random_bytes(64)
-        notification_key = base64.encodestring(keybytes)
-        # and set the version to 1 since this is a new subscription and key
-        notification_key_version_id = str(1)
-
-        # for SubscribeToEvent, <info> can contain a <subscription> element (?)
-        subscription = '<subscription>'
-
-        # which contains a <common>
-        subscription += '<common>'
-
-        # Note: here's where we could specify an ID for the new subscription, according to
-        # the schema, but when we try it, the request is rejected as invalid. Just leave it
-        # out and return the ID that HealthVaulth made up.
-
-        # auth - we send a key that is used by HV later, when sending notifications, to prove it's them
-        subscription += '<notification-authentication-info>'
-        subscription += '<hv-eventing-shared-key>'
-        subscription += '<notification-key>' + notification_key + '</notification-key>'
-        subscription += '<notification-key-version-id>' + notification_key_version_id + '</notification-key-version-id>'
-        subscription += '</hv-eventing-shared-key>'
-        subscription += '</notification-authentication-info>'
-
-        # how we get notified
-        subscription += '<notification-channel>'
-        subscription += '<http-notification-channel><url>%s</url></http-notification-channel>' % url
-        subscription += '</notification-channel>'
-        subscription += '</common>'
-
-        # now, the subscription itself
-        # only record item changed events are currently supported
-        # and the only filter is on type IDs.
-        # so all this nesting is kind of pointless.
-        subscription += '<record-item-changed-event><filters><filter><type-ids>'
-        for thing_type in thing_types:
-            subscription += '<type-id>%s</type-id>' % thing_type
-        subscription += '</type-ids></filter></filters></record-item-changed-event>'
-
-        subscription += '</subscription>'
-
-        info = '<info>' + subscription + '</info>'
-
-        # Apparently we should NOT include the wctoken - no idea why not
-        # use_target_person_id=True ==> HealthVault error. status=9, message=The account is not active.
-        # use_target_person_id=False ==> Status=134, message=None
-        #  but 134 is SUBSCRIPTION_INVALID 134 The subscription contains invalid data.  which is promising
-        # it would be nice if it said what's invalid about it though
-        (response, body, tree) = self._build_and_send_request("SubscribeToEvent", info, use_wctoken=False)
-
-        info = tree.find('{urn:com.microsoft.wc.methods.response.SubscribeToEvent}info')
-        sub_id = text_or_none(info, 'subscription-id')
-        return (sub_id, notification_key)
-
-    def get_event_subscriptions(self):
-        """Get the list of our `event subscriptions
-        <https://platform.healthvault-ppe.com/platform/XSD/subscription.xsd>`_ from HealthVault
-
-        :returns: List of dictionaries containing subscription information.
-
-        See also :py:meth:`subscribe_to_event`.
-        """
-        # And apparently we should NOT include the wctoken
-        # https://platform.healthvault-ppe.com/platform/XSD/response-geteventsubscriptions.xsd
-        (response, body, tree) = self._build_and_send_request('GetEventSubscriptions', '<info/>', use_wctoken=False)
-        info = tree.find('{urn:com.microsoft.wc.methods.response.GetEventSubscriptions}info')
-        return [parse_subscription(sub) for sub in info.findall('subscriptions/subscription')]
-
-    def unsubscribe_to_event(self, sub_id):
-        """
-        Delete one `subscription
-        <https://platform.healthvault-ppe.com/platform/XSD/subscription.xsd>`_
-
-        :param string sub_id: The ID of a subscription.
-
-        See also :py:meth:`.subscribe_to_event`.
-        """
-        info = '<info><subscription-id>%s</subscription-id></info>' % sub_id
-        self._build_and_send_request('UnsubscribeToEvent', info, use_wctoken=False)
-        # No need to look at response - either it worked or not, and if not, an exception will have been raised
-
-    def get_things(self, hv_datatype, min_date=None, max_date=None, filter=None):
+    def get_things(self, hv_datatype, min_date=None, max_date=None, filter=None, debug=False):
         """Call the get_things API to retrieve some things (data items).
 
         See also
@@ -641,8 +469,10 @@ class HealthVaultConn(object):
                '</group></info>'
 
         (response, body, tree) = self._build_and_send_request("GetThings", info)
-
+        if debug:
+            logger.debug("get_things response body:\n%s", body)
         info = tree.find('{urn:com.microsoft.wc.methods.response.GetThings}info')
+        print "get_things returning: %s" % elt_as_string(info)
         return info
 
 
@@ -672,7 +502,7 @@ class HealthVaultConn(object):
             state=text_or_none(basic,'state/text')
         )
 
-    def get_blood_glucose_measurements(self, min_date=None, max_date=None):
+    def get_blood_glucose_measurements(self, min_date=None, max_date=None, debug=False):
         """Get `Blood Glucose Measurements
         <http://developer.healthvault.com/pages/types/type.aspx?id=879e7c04-4e8a-4707-9ad3-b054df467ce4>`_
 
@@ -680,7 +510,7 @@ class HealthVaultConn(object):
         :param datetime.datetime max_date: Only things with an effective datetime before this are returned.
         :returns: a list of dictionaries.
         """
-        info = self.get_things(DataType.blood_glucose_measurement, min_date, max_date)
+        info = self.get_things(DataType.blood_glucose_measurement, min_date, max_date, debug=debug)
         return [parse_blood_glucose(item) for item in info.findall('group/thing/data-xml/blood-glucose')]
 
     def get_blood_pressure_measurements(self, min_date=None, max_date=None):
@@ -815,129 +645,3 @@ class HealthVaultConn(object):
         """
         info = self.get_things(DataType.sleep_sessions, min_date, max_date)
         return [parse_sleep_session(s) for s in info.findall('group/thing/data-xml/sleep-am')]
-
-    def create_connect_request(self, friendly_name, question, answer, external_id):
-        """Create a connect request.
-
-        Briefly, this allows a patient to authorize this application to access their data
-        without your application having to provide a patient front-end.
-
-        Read about `Offline Access
-        <http://msdn.microsoft.com/en-us/healthvault/bb871490.aspx>`_ and
-        `Connecting a back-end system to HealthVault
-        <http://msdn.microsoft.com/en-us/healthvault/cc507205>`_
-
-        `CreateConnectRequest XSD <https://platform.healthvault-ppe.com/platform/XSD/method-createconnectrequest.xsd>`_
-
-        `CreateConnectRequest Response XSD <https://platform.healthvault-ppe.com/platform/XSD/response-createconnectrequest.xsd>`_
-
-        :param string friendly_name: A friendly name that will be presented to the user after the user
-            successfully answers the challenge question.
-            The friendly name should be something that is recognizable and distinguishes one connect
-            request from another so that the user may choose the expected record during application
-            authorization. For example, a mother of 2 children may want to name her connect requests
-            after each child so she can distinguish one child's connect request from the others.
-
-        :param string question: A challenge question posed to the user once the identity code has been
-            successfully entered. The challenge question should be personal and easy to answer for the
-            user. It is recommended that the challenge question require a one word answer. An empty
-            question will result in an InvalidVerificationQuestion error.
-
-        :param string answer: The answer that the patient is expected to provide when posed with the challenge
-            question. It is recommended that this be a single word. The answer is case-insensitive, however,
-            it is whitespace sensitive. An empty answer will result in an InvalidVerificationAnswer error.
-
-        :param string external_id: An identifier supplied by the external application for the connect request.
-            This value will tie the external application to the HealthVault record being shared. For
-            instance, this could be the patient identifier used to store information in the calling
-            application's database.
-
-        :returns: identity_code - A 20 digit unique code that the user will need to enter into
-            account.healthvault.com in order to face the challenge question and authorize the connect request.
-            This code is to be kept secret. If the code is lost, the application should call
-            DeletePendingConnectRequest in order to delete it, then call CreateConnectRequest again
-            in order to obtain a new identity code.
-        :rtype string:
-
-        :raises: HealthVaultException on error.  Some errors specific to this call:
-
-        ACCESS_DENIED
-            If the application does not have method-level access rights to the method.
-
-        INVALID_VERIFICATION_QUESTION
-            If the question is empty or blank (made up of only whitespace).
-
-        INVALID_VERIFICATION_ANSWER
-            If the answer is empty or blank (made up of only whitespace).
-
-        DUPLICATE_CONNECT_REQUEST_FOUND
-            If the connect request for the external id was already created by the calling application.
-        """
-        info = u"<info>"
-        info += u"<friendly-name>%s</friendly-name>" % friendly_name
-        info += u"<question>%s</question>" % question
-        info += u"<answer>%s</answer>" % answer
-        info += u"<external-id>%s</external-id>" % external_id
-        info += u"</info>"
-        (response, body, tree) = self._build_and_send_request("CreateConnectRequest", info)
-
-        info = tree.find('{urn:com.microsoft.wc.methods.response.CreateConnectRequest}info')
-        identity_code = info.find("identity-code").request
-        return identity_code
-
-    def delete_pending_connect_request(self, external_id):
-        """Delete a patient's pending connect request.
-
-        `XSD <https://platform.healthvault-ppe.com/platform/XSD/method-deletependingconnectrequest.xsd>`_
-
-        :param string external_id: Specifies the external id for which the associated pending connect
-            request is removed.
-
-        """
-        info = u"<info><external-id>%s</external-id></info>" % external_id
-        self._build_and_send_request("DeletePendingConnectRequest", info)
-
-    def get_authorized_connect_requests(self, since=None):
-        """Query for connect requests that have been authorized by a patient.  The application can
-        use the information returned to access that patient's data offline.
-
-        Validated connect requests are removed by HealthVault after 90 days. It is
-        advised that applications call get_authorized_connect_requests daily or weekly to ensure
-        that all validated connect requests are retrieved.
-
-        `GetAuthorizedConnectRequest XSD <https://platform.healthvault-ppe.com/platform/XSD/method-getauthorizedconnectrequests.xsd>`_
-
-        `GetAuthorizedConnectRequest Response XSD <https://platform.healthvault-ppe.com/platform/XSD/response-getauthorizedconnectrequests.xsd>`_
-
-        :param datetime.datetime since: (optional) Specifies the UTC datetime from which all found
-            authorized connect requests are to be returned.
-            If no datetime is supplied, DateTime.Min is assumed, and all connect requests found for the
-            application are returned. If an invalid datetime is supplied, an InvalidDateTime error is
-            returned.
-
-        :rtype: A list of dictionaries.
-
-        Example of a returned value::
-
-            [{ 'person_id': 'XXXXX',
-                'app_specific_record_id': 'YYYYY',
-                'app_id': 'XZZZ',
-                'external_id': 'ABCDE',
-              }, ...
-            ]
-
-        :raises: HealthVaultException on error.  Some errors specific to this call:
-
-        ACCESS_DENIED
-            If the calling application does not have method-level access rights to the method.
-
-        INVALID_DATETIME
-            If the authorized-connect-requests-since is an invalid datetime.
-        """
-        info = u"<info>"
-        if since:
-            info += u"<authorized-connect-requests-since>%s</authorized-connect-requests-since>" % format_datetime(since)
-        info += u"</info>"
-        (response, body, tree) = self._build_and_send_request("GetAuthorizedConnectRequests", info)
-        info = tree.find('{urn:com.microsoft.wc.methods.response.GetAuthorizedConnectRequests}info')
-        requests = [parse_connect_request(elt) for elt in info.findall("connect-request")]

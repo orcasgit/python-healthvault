@@ -17,13 +17,17 @@ def pretty_xml(xml):
 
 def elt_to_string(elt):
     """Given an ElementTree element object, return a string with nicely formatted XML"""
+    s = elt_as_string(elt)
+    # Now s has the XML as one long string, but that's hard to read.
+    # This is inefficient, but we only use it when debugging.
+    return pretty_xml(s)
+
+def elt_as_string(elt):
     et = ET.ElementTree(elt)
     s = StringIO.StringIO()
     et.write(s)
     s = s.getvalue()
-    # Now s has the XML as one long string, but that's hard to read.
-    # This is inefficient, but we only use it when debugging.
-    return pretty_xml(s)
+    return s
 
 # Little utils to help pull data out of the XML
 def text_list(elt, xpath):
@@ -431,14 +435,15 @@ def parse_record_item_changed_event(elt):
     )
 
 def parse_record_item_changed_event_filter(elt):
+    type_ids = elt.find('type-ids')
     return dict(
-        type_ids=[text_or_none(item, 'type-id') for item in elt.findall('type-ids')]
+        type_ids=[item.text for item in type_ids.findall('type-id')]
     )
 
 def parse_notification(elt):
     return dict(
         common=parse_notification_common(elt.find('common')),
-        record_change_notification=parse_optional_item(elt, 'record_change_notification', parse_record_change_notification),
+        record_change_notification=parse_optional_item(elt, 'record-change-notification', parse_record_change_notification),
     )
 
 def parse_notification_common(elt):

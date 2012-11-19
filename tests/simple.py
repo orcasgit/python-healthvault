@@ -117,37 +117,6 @@ class Handler(BaseHTTPServer.BaseHTTPRequestHandler):
         #conn.get_authorized_people()
         #conn.get_application_info()
 
-        # Thing types we're subscribed to
-        subscribed_to = set()
-        try:
-            data = conn.get_event_subscriptions()
-        except HealthVaultException as e:
-            self.wfile.write("Exception getting subscriptions: %s<br/>\n" % e)
-        else:
-            self.wfile.write("SUBSCRIPTIONS:<br/>\n<ul>\n")
-            for w in data:
-                self.wfile.write("<li>%s</li>\n" % pprint.pformat(w))
-                done = False
-                for filter in w['record_item_changed_event']['filters']:
-                    for type_id in filter['type_ids']:
-                        if type_id in subscribed_to:
-                            print "Duplicate subscription found (%s), let's delete it" % type_id
-                            conn.unsubscribe_to_event(w['common']['id'])
-                            done = True
-                            break
-                        subscribed_to.add(type_id)
-                    if done:
-                        break
-            self.wfile.write("</ul>\n")
-
-        # Type IDs we want to be subscribed to
-        wanted_type_ids = [DataType.height_measurements, DataType.weight_measurements,
-                           DataType.blood_pressure_measurements, DataType.basic_demographic_data,
-                           DataType.devices]
-        for type_id in wanted_type_ids:
-            if type_id not in subscribed_to:
-                conn.subscribe_to_event("%s/sub/" % BASE_URL, [type_id])
-
         try:
             data = conn.get_basic_demographic_info()
         except HealthVaultException as e:
@@ -158,7 +127,7 @@ class Handler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.wfile.write("<br/>\n")
 
         try:
-            data = conn.get_blood_glucose_measurements()
+            data = conn.get_blood_glucose_measurements(debug=True)
         except HealthVaultException as e:
             self.wfile.write("Exception getting blood glucose: %s<br/>\n" % e)
         else:
