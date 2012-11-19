@@ -33,7 +33,7 @@ import xml.etree.ElementTree as ET
 from .datatypes import DataType
 from .hvcrypto import HVCrypto
 from .xmlutils import (when_to_datetime, int_or_none, text_or_none, boolean_or_none, parse_weight,
-                       parse_device, elt_to_string, parse_exercise, parse_height, parse_sleep_session, pretty_xml, parse_subscription, parse_notification, parse_blood_glucose)
+                       parse_device, elt_to_string, parse_exercise, parse_height, parse_sleep_session, pretty_xml, parse_subscription, parse_notification, parse_blood_glucose, parse_connect_request)
 
 from Crypto.Random import get_random_bytes
 
@@ -49,16 +49,20 @@ def format_datetime(dt):
 
     :param dt: The datetime to format
     :type dt: datetime.datetime
-    :returns: A string in the format CCYY-MM-DDThh:mm:ss
+    :returns: time in `HealthVault dateTime format
+        <http://msdn.microsoft.com/en-us/library/ms256220.aspx>`_ (CCYY-MM-DDThh:mm:ss)
+    :rtype: string
     """
-    # http://msdn.microsoft.com/en-us/library/ms256220.aspx
     return dt.strftime("%Y-%m-%dT%H:%m:%S")
 
 
 def _msg_time():
-    """Return value to use as `msg-time` in a request."""
-    # dateTime format: see <http://msdn.microsoft.com/en-us/library/ms256220.aspx>
-    # CCYY-MM-DDThh:mm:ss
+    """Get value to use as `msg-time` in a request.
+
+    :returns: Current time in `HealthVault dateTime format
+        <http://msdn.microsoft.com/en-us/library/ms256220.aspx>`_ (CCYY-MM-DDThh:mm:ss)
+    :rtype: string
+    """
     return format_datetime(datetime.datetime.now())
 
 
@@ -67,7 +71,7 @@ class HealthVaultException(Exception):
 
     It has a :py:attr:`code` attribute that'll be set to the
     `HealthVault status code <http://msdn.microsoft.com/en-us/library/hh567902.aspx>`_,
-    if one is available (otherwise it's None)
+    if one is available. Otherwise it's None.
 
     """
     def __init__(self, *args, **kwargs):
@@ -84,7 +88,7 @@ class HealthVaultConn(object):
     Often you won't have the WCTOKEN yet. Leave it out and the HealthVaultConn object will get an
     authorized session to HealthVault but not yet get the record ID.
 
-    To get a WCTOKEN, also known as the user auth token, your web application needs to redirect
+    To get a WCTOKEN, also known as the `user auth token`, your web application needs to redirect
     the user to HealthVault to grant your application authorization to access their data. You can
     use :py:meth:`.authorization_url` to get the full URL to redirect the user to. When
     that's done, HealthVault will redirect the user to your URL (that you passed to :py:meth:`.authorization_url`)
@@ -155,8 +159,8 @@ class HealthVaultConn(object):
         return self.authorized
 
     def connect(self, wctoken):
-        """Set the wctoken to use, and establish an authorized session with HealthVault
-        that can access this person's data. User doesn't need to call this if a wctoken
+        """Set the wctoken (user auth token) to use, and establish an authorized session with HealthVault
+        that can access this person's data. You don't need to call this if a wctoken
         was passed initially.
 
         :param string wctoken: The auth token passed to the application after the user has
@@ -246,7 +250,9 @@ class HealthVaultConn(object):
 
     def _get_record_id(self):
         """
-        Returns (selected_record_id, person_id)
+        Calls GetPersonInfo, returns (selected_record_id, person_id)
+
+        Not part of the public API.
         """
         (response, body, tree) = self._build_and_send_request("GetPersonInfo", "<info/>", use_record_id=False)
 
@@ -269,12 +275,19 @@ class HealthVaultConn(object):
 
         Contents of return value::
 
-            response:  HTTPResponse
-            body:  string with body of response
-            elementtree: ElementTree.Element object with parsed body
+            response
+                HTTPResponse
+
+            body
+                string with body of response
+
+            elementtree
+                ElementTree.Element object with parsed body
 
         :param string payload: The request body
         :raises: HealthVaultException if HTTP response status is not 200 or status in parsed response is not 0.
+
+        Not part of the public API.
         """
         conn = httplib.HTTPSConnection(self.server, 443)
         conn.putrequest('POST', '/platform/wildcat.ashx')
@@ -316,8 +329,6 @@ class HealthVaultConn(object):
     def _build_and_send_request(self, method_name, info, method_version=1, use_record_id=True,
                                use_target_person_id=False, use_wctoken=True):
         """
-        (internal method)
-
         Given the <info>...</info> part of a request, wrap it with all the identification and auth stuff
         to form a complete request, call sendRequest() to send it, and return whatever sendRequest returns.
 
@@ -327,6 +338,8 @@ class HealthVaultConn(object):
         :param boolean use_record_id: Whether to include the <record-id> in the request (default: True)
         :param boolean use_target_person_id: Whether to include the <target-person-id> in the request (default: False)
         :param boolean use_wctoken: Whether to include the wctoken (<auth-token>) in the request (default: True)
+
+        Not part of the public API.
         """
         # https://platform.healthvault-ppe.com/platform/XSD/request.xsd
 
@@ -389,6 +402,9 @@ class HealthVaultConn(object):
                 'things': [ 'a', 'list', 'of', 'thing-type', 'uuids'],
             },
             ...]
+
+        :note: This is untested as we were never able to get the HealthVault PPE server
+            to send any notifications.
         """
 
         """From some sample MS code, here's a template of what an incoming notification
@@ -603,6 +619,11 @@ class HealthVaultConn(object):
         :returns: ElementTree Element object containing the <wc:info> element of the response
         :raises: HealthVaultException if the request doesn't succeed with a 200 status
             or the status in the XML response is non-zero.
+
+        :note: This method is exposed because it might be useful, but in general
+            applications can call other, more specific methods to interact with HealthVault,
+            and should only need to use this if a HealthVault call is needed that hasn't
+            yet been implemented here.
         """
 
         #QUERY INFO
@@ -795,3 +816,128 @@ class HealthVaultConn(object):
         info = self.get_things(DataType.sleep_sessions, min_date, max_date)
         return [parse_sleep_session(s) for s in info.findall('group/thing/data-xml/sleep-am')]
 
+    def create_connect_request(self, friendly_name, question, answer, external_id):
+        """Create a connect request.
+
+        Briefly, this allows a patient to authorize this application to access their data
+        without your application having to provide a patient front-end.
+
+        Read about `Offline Access
+        <http://msdn.microsoft.com/en-us/healthvault/bb871490.aspx>`_ and
+        `Connecting a back-end system to HealthVault
+        <http://msdn.microsoft.com/en-us/healthvault/cc507205>`_
+
+        `CreateConnectRequest XSD <https://platform.healthvault-ppe.com/platform/XSD/method-createconnectrequest.xsd>`_
+
+        `CreateConnectRequest Response XSD <https://platform.healthvault-ppe.com/platform/XSD/response-createconnectrequest.xsd>`_
+
+        :param string friendly_name: A friendly name that will be presented to the user after the user
+            successfully answers the challenge question.
+            The friendly name should be something that is recognizable and distinguishes one connect
+            request from another so that the user may choose the expected record during application
+            authorization. For example, a mother of 2 children may want to name her connect requests
+            after each child so she can distinguish one child's connect request from the others.
+
+        :param string question: A challenge question posed to the user once the identity code has been
+            successfully entered. The challenge question should be personal and easy to answer for the
+            user. It is recommended that the challenge question require a one word answer. An empty
+            question will result in an InvalidVerificationQuestion error.
+
+        :param string answer: The answer that the patient is expected to provide when posed with the challenge
+            question. It is recommended that this be a single word. The answer is case-insensitive, however,
+            it is whitespace sensitive. An empty answer will result in an InvalidVerificationAnswer error.
+
+        :param string external_id: An identifier supplied by the external application for the connect request.
+            This value will tie the external application to the HealthVault record being shared. For
+            instance, this could be the patient identifier used to store information in the calling
+            application's database.
+
+        :returns: identity_code - A 20 digit unique code that the user will need to enter into
+            account.healthvault.com in order to face the challenge question and authorize the connect request.
+            This code is to be kept secret. If the code is lost, the application should call
+            DeletePendingConnectRequest in order to delete it, then call CreateConnectRequest again
+            in order to obtain a new identity code.
+        :rtype string:
+
+        :raises: HealthVaultException on error.  Some errors specific to this call:
+
+        ACCESS_DENIED
+            If the application does not have method-level access rights to the method.
+
+        INVALID_VERIFICATION_QUESTION
+            If the question is empty or blank (made up of only whitespace).
+
+        INVALID_VERIFICATION_ANSWER
+            If the answer is empty or blank (made up of only whitespace).
+
+        DUPLICATE_CONNECT_REQUEST_FOUND
+            If the connect request for the external id was already created by the calling application.
+        """
+        info = u"<info>"
+        info += u"<friendly-name>%s</friendly-name>" % friendly_name
+        info += u"<question>%s</question>" % question
+        info += u"<answer>%s</answer>" % answer
+        info += u"<external-id>%s</external-id>" % external_id
+        info += u"</info>"
+        (response, body, tree) = self._build_and_send_request("CreateConnectRequest", info)
+
+        info = tree.find('{urn:com.microsoft.wc.methods.response.CreateConnectRequest}info')
+        identity_code = info.find("identity-code").request
+        return identity_code
+
+    def delete_pending_connect_request(self, external_id):
+        """Delete a patient's pending connect request.
+
+        `XSD <https://platform.healthvault-ppe.com/platform/XSD/method-deletependingconnectrequest.xsd>`_
+
+        :param string external_id: Specifies the external id for which the associated pending connect
+            request is removed.
+
+        """
+        info = u"<info><external-id>%s</external-id></info>" % external_id
+        self._build_and_send_request("DeletePendingConnectRequest", info)
+
+    def get_authorized_connect_requests(self, since=None):
+        """Query for connect requests that have been authorized by a patient.  The application can
+        use the information returned to access that patient's data offline.
+
+        Validated connect requests are removed by HealthVault after 90 days. It is
+        advised that applications call get_authorized_connect_requests daily or weekly to ensure
+        that all validated connect requests are retrieved.
+
+        `GetAuthorizedConnectRequest XSD <https://platform.healthvault-ppe.com/platform/XSD/method-getauthorizedconnectrequests.xsd>`_
+
+        `GetAuthorizedConnectRequest Response XSD <https://platform.healthvault-ppe.com/platform/XSD/response-getauthorizedconnectrequests.xsd>`_
+
+        :param datetime.datetime since: (optional) Specifies the UTC datetime from which all found
+            authorized connect requests are to be returned.
+            If no datetime is supplied, DateTime.Min is assumed, and all connect requests found for the
+            application are returned. If an invalid datetime is supplied, an InvalidDateTime error is
+            returned.
+
+        :rtype: A list of dictionaries.
+
+        Example of a returned value::
+
+            [{ 'person_id': 'XXXXX',
+                'app_specific_record_id': 'YYYYY',
+                'app_id': 'XZZZ',
+                'external_id': 'ABCDE',
+              }, ...
+            ]
+
+        :raises: HealthVaultException on error.  Some errors specific to this call:
+
+        ACCESS_DENIED
+            If the calling application does not have method-level access rights to the method.
+
+        INVALID_DATETIME
+            If the authorized-connect-requests-since is an invalid datetime.
+        """
+        info = u"<info>"
+        if since:
+            info += u"<authorized-connect-requests-since>%s</authorized-connect-requests-since>" % format_datetime(since)
+        info += u"</info>"
+        (response, body, tree) = self._build_and_send_request("GetAuthorizedConnectRequests", info)
+        info = tree.find('{urn:com.microsoft.wc.methods.response.GetAuthorizedConnectRequests}info')
+        requests = [parse_connect_request(elt) for elt in info.findall("connect-request")]

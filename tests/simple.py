@@ -19,6 +19,9 @@ import webbrowser
 from healthvaultlib.datatypes import DataType
 from healthvaultlib.healthvault import HealthVaultConn, HealthVaultException
 
+# FIXME: this will need changing
+BASE_URL = "https://thalia.caktusgroup.com:9123"
+
 # FIXME: This is my test app
 APP_ID = "0ce9374d-f6d9-4314-afcc-57f3c8863ba0"
 THUMBPRINT = "67E6AAB1C33781D17B82F8B0D78C0DF1BE3D8866"
@@ -143,7 +146,7 @@ class Handler(BaseHTTPServer.BaseHTTPRequestHandler):
                            DataType.devices]
         for type_id in wanted_type_ids:
             if type_id not in subscribed_to:
-                conn.subscribe_to_event("https://thalia.caktusgroup.com:9123/sub/", [type_id])
+                conn.subscribe_to_event("%s/sub/" % BASE_URL, [type_id])
 
         try:
             data = conn.get_basic_demographic_info()
@@ -248,7 +251,7 @@ class Handler(BaseHTTPServer.BaseHTTPRequestHandler):
             if not self.server.conn.is_authorized():
                 logger.debug("Not authorized yet, redir to HV")
                 # Start by redirecting user to HealthVault to authorize us
-                url = self.server.conn.authorization_url('https://localhost:8000/authtoken')
+                url = self.server.conn.authorization_url('%s/authtoken' % BASE_URL)
                 self.send_response(307)
                 self.send_header("Location", url)
                 self.end_headers()
@@ -336,7 +339,7 @@ server_address = ('', 8000)
 httpd = SSLServer(server_address, Handler)
 
 # Point user's browser at our starting URL
-webbrowser.open("https://localhost:8000/")
+webbrowser.open("%s/" % BASE_URL)
 
 # And handle requests forever
 httpd.serve_forever()

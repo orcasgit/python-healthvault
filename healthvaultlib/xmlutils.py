@@ -517,3 +517,12 @@ def parse_blood_glucose_value(elt):
         mmolperl=parse_positive_double(elt.find('mmolPerL')),
         display=parse_optional_item(elt, 'display', parse_display_value)
     )
+
+def parse_connect_request(elt):
+    # https://platform.healthvault-ppe.com/platform/XSD/response-getauthorizedconnectrequests.xsd
+    return dict(
+        person_id=text_or_none(elt, 'person-id'),
+        app_specific_record_id=text_or_none('record-id/app-specific-record-id'),
+        app_id=text_or_none(elt, 'app-id'),
+        external_id=text_or_none(elt, 'external-id'),
+    )
