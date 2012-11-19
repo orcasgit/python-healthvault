@@ -10,19 +10,15 @@
 # token we received.
 
 import BaseHTTPServer
-import pprint
 from ssl import wrap_socket
 import os
-from urllib import urlencode
 from urlparse import urlparse, parse_qs
 import webbrowser
-from healthvaultlib.datatypes import DataType
 from healthvaultlib.healthvault import HealthVaultConn, HealthVaultException
 
-# FIXME: this will need changing
-BASE_URL = "https://thalia.caktusgroup.com:9123"
+BASE_URL = "https://localhost:8000"
 
-# FIXME: This is my test app
+# FIXME: This is my test app, you might need to set up your own and change these values
 APP_ID = "0ce9374d-f6d9-4314-afcc-57f3c8863ba0"
 THUMBPRINT = "67E6AAB1C33781D17B82F8B0D78C0DF1BE3D8866"
 APP_PUBLIC_KEY = long("b81c20fc71cc63324ccb3860c8a092c464f9e54cbe6f228fb79d0a9b2e303c3b233989b4a45fa1b8595b42791beed"
@@ -37,7 +33,6 @@ APP_PRIVATE_KEY = long("4f2e79d958b008b1a7697773d89586c9c48bdd5c6642b1e0919d8ee4
                        "5590e1bea4eb483286317b72cf11ee1df5bf56d8afef68b2504991cb3fd907f575b6f809f33e45be992598ccb475"
                        "ffd0a020e46d053233eccb07422813c9e50643b6b547fca8941a919b6c2f7e717115110a6fb51b9012f64ff69c78"
                        "88fbe3ecde8c277dec1c147b115ff5400af6146dded23419f191", 16)
-
 
 # Lots of logging
 import logging

@@ -64,8 +64,8 @@ then just type ``tox`` in the top directory.
 Sample app
 ----------
 
-`tests/simple.py` is provided as an example.
-You can run it like this::
+`tests/simple.py` is provided as an example. You might need to edit a few things
+at the top.  Then you can run it like this::
 
     python -m tests.simple
 
