@@ -11,7 +11,7 @@ setup(
     description='Python library to access Microsoft Healthvault',
     install_requires=['pycrypto>=2.6', 'sphinx'],
     classifiers=[
-        'Development Status :: 2 - Beta',
+        'Development Status :: 4 - Beta',
         'Intended Audience :: Developers',
         'Programming Language :: Python',
         'License :: OSI Approved :: MIT License',
