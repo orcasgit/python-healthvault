@@ -78,7 +78,7 @@ class HealthVaultException(Exception):
 
 
 class HealthVaultConn(object):
-    """A HealthVaultConn object is used to access data for one person from one HealthVault record.
+    """A HealthVaultConn object is used to access data for one patient ("record").
 
     When the HealthVaultConn object is created, it connects to the server to verify the credentials it was given,
     and retrieve the record ID corresponding to the WCTOKEN.
@@ -97,9 +97,9 @@ class HealthVaultConn(object):
     retrieve the record id and person id for the record and person that the user has granted
     access to.
 
-    Check the person ID (:py:attr:`.person_id`) and record id (:py:attr:`.record_id`). The user could
-    sign in to HealthVault as another user, or change the person they're granting access to, and this
-    is the only way for an application to tell that this `HealthVaultConn` object is now accessing data
+    Check the record id (:py:attr:`.record_id`). The user could change the person (patient)
+    they're granting access to, and this is the only way for an application to tell
+    that this `HealthVaultConn` object is now accessing data
     for a different person.
 
     :param string app_id: the application ID (a UUID)

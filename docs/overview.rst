@@ -22,7 +22,9 @@ but to access any person's data online, it will need to pass a user auth token. 
 your web application will start by redirecting your user to the HealthVault APPAUTH
 link to authorize your app to access their data.  You can call
 :py:meth:`healthvaultlib.HealthVaultConn.authorization_url`
-to get the URL to send them to.
+to get the URL to send them to. If you know which person's data you want and the
+HealthVault record ID for that person, you can request access to that specific
+person's data.
 When that's done, HealthVault will redirect the user back to a URL in your app, passing an `auth token
 <http://msdn.microsoft.com/en-us/library/ff803620.aspx#APPAUTH>`_.
 

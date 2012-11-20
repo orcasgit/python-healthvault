@@ -44,7 +44,7 @@ the :ref:`overview`.
 Installation
 ------------
 
-Use ``pip install python-healthvault``.  This library is (or will be) in PyPI.
+Use ``pip install python-healthvault``.  This library is PyPI.
 
 Requirements
 ------------
