@@ -2,6 +2,7 @@ class DataType(object):
     """Encapsulate constants for HealthVault data type UUIDs."""
 
     basic_demographic_data = "3b3e6b16-eb69-483c-8d7e-dfe116ae6092"
+    blood_glucose_measurement = "879e7c04-4e8a-4707-9ad3-b054df467ce4"
     blood_pressure_measurements = "ca3c57f4-f4c1-4e15-be67-0a3caf5414ed"
     devices = "ef9cf8d5-6c0b-4292-997f-4047240bc7be"
     exercise = "85a21ddb-db20-4c65-8d30-33c899ccf612"

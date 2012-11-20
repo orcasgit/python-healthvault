@@ -10,13 +10,15 @@
 # token we received.
 
 import BaseHTTPServer
+from ssl import wrap_socket
 import os
-from urllib import urlencode
 from urlparse import urlparse, parse_qs
 import webbrowser
 from healthvaultlib.healthvault import HealthVaultConn, HealthVaultException
 
-# FIXME: This is my test app
+BASE_URL = "https://localhost:8000"
+
+# FIXME: This is my test app, you might need to set up your own and change these values
 APP_ID = "0ce9374d-f6d9-4314-afcc-57f3c8863ba0"
 THUMBPRINT = "67E6AAB1C33781D17B82F8B0D78C0DF1BE3D8866"
 APP_PUBLIC_KEY = long("b81c20fc71cc63324ccb3860c8a092c464f9e54cbe6f228fb79d0a9b2e303c3b233989b4a45fa1b8595b42791beed"
@@ -31,7 +33,6 @@ APP_PRIVATE_KEY = long("4f2e79d958b008b1a7697773d89586c9c48bdd5c6642b1e0919d8ee4
                        "5590e1bea4eb483286317b72cf11ee1df5bf56d8afef68b2504991cb3fd907f575b6f809f33e45be992598ccb475"
                        "ffd0a020e46d053233eccb07422813c9e50643b6b547fca8941a919b6c2f7e717115110a6fb51b9012f64ff69c78"
                        "88fbe3ecde8c277dec1c147b115ff5400af6146dded23419f191", 16)
-
 
 # Lots of logging
 import logging
@@ -67,9 +68,21 @@ class Handler(BaseHTTPServer.BaseHTTPRequestHandler):
                 )
             except HealthVaultException as e:
                 print e
-                raise
+                # Leave it un-authorized
+                # set up un-authorized conn
+                self.server.conn = HealthVaultConn(
+                    app_id=APP_ID,
+                    app_thumbprint=THUMBPRINT,
+                    public_key=APP_PUBLIC_KEY,
+                    private_key=APP_PRIVATE_KEY
+                )
+            else:
+                if self.server.conn.record_id:
+                    with open("RECORD_ID", "w") as f:
+                        f.write(self.server.conn.record_id)
 
-        # And this is a stupid old-style class, sigh
+
+            # And this is a stupid old-style class, sigh
         # AND THE __init__ PROCESSES THE REQUEST!  ARGGG
         BaseHTTPServer.BaseHTTPRequestHandler.__init__(self, request, client_address, server)
 
@@ -79,8 +92,33 @@ class Handler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.end_headers()
 
         conn = self.server.conn
+
+        self.wfile.write("<p>Record id: %s</p>\n" % conn.record_id)
+        self.wfile.write("<p>Person id: %s</p>\n" % conn.person_id)
+
         try:
-            data = conn.getBasicDemographicInfo()
+            alt_ids = conn.get_alternate_ids()
+        except HealthVaultException as e:
+            self.wfile.write("Exception getting alternate Ids: %s<br/>\n" % e)
+        else:
+            msg = "Alternate IDs: %s<br/>\n" % ", ".join(alt_ids)
+            self.wfile.write(msg)
+            for alt_id in alt_ids:
+                conn.disassociate_alternate_id(alt_id)
+                self.wfile.write("Removed alternate ID %s<br/>\n" % alt_id)
+
+        try:
+            conn.associate_alternate_id("FredBoy")
+        except HealthVaultException as e:
+            self.wfile.write("Exception associating alternate ID: %s<br/>\n" % e)
+        else:
+            self.wfile.write("Added alternate ID %s<br/>\n" % "FredBoy")
+
+        #conn.get_authorized_people()
+        #conn.get_application_info()
+
+        try:
+            data = conn.get_basic_demographic_info()
         except HealthVaultException as e:
             self.wfile.write("Exception getting basic demographic data: %s<br/>\n" % e)
         else:
@@ -89,7 +127,16 @@ class Handler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.wfile.write("<br/>\n")
 
         try:
-            data = conn.getWeightMeasurements()
+            data = conn.get_blood_glucose_measurements(debug=True)
+        except HealthVaultException as e:
+            self.wfile.write("Exception getting blood glucose: %s<br/>\n" % e)
+        else:
+            self.wfile.write("Blood glucose: <ul>")
+            self.wfile.write("".join(["<li>" + repr(d) + "</li>" for d in data]))
+            self.wfile.write("</ul>\n")
+
+        try:
+            data = conn.get_weight_measurements()
         except HealthVaultException as e:
             self.wfile.write("Exception getting weight measurements: %s<br/>\n" % e)
         else:
@@ -99,7 +146,7 @@ class Handler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.wfile.write("</ul>\n")
 
         try:
-            data = conn.getDevices()
+            data = conn.get_devices()
         except HealthVaultException as e:
             self.wfile.write("Exception getting device data: %s<br/>\n" % e)
         else:
@@ -109,7 +156,7 @@ class Handler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.wfile.write("</ul>\n")
 
         try:
-            data = conn.getBloodPressureMeasurements()
+            data = conn.get_blood_pressure_measurements()
         except HealthVaultException as e:
             self.wfile.write("Exception getting BP: %s<br/>\n" % e)
         else:
@@ -118,7 +165,7 @@ class Handler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.wfile.write("</ul>\n")
 
         try:
-            data = conn.getHeightMeasurements()
+            data = conn.get_height_measurements()
         except HealthVaultException as e:
             self.wfile.write("Exception getting heights: %s<br/>\n" % e)
         else:
@@ -127,7 +174,7 @@ class Handler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.wfile.write("</ul>\n")
 
         try:
-            data = conn.getExercise()
+            data = conn.get_exercise()
         except HealthVaultException as e:
             self.wfile.write("Exception getting exercise: %s<br/>\n" % e)
         else:
@@ -136,14 +183,13 @@ class Handler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.wfile.write("</ul>\n")
 
         try:
-            data = conn.getSleepSessions()
+            data = conn.get_sleep_sessions()
         except HealthVaultException as e:
             self.wfile.write("Exception getting sleep sessions: %s<br/>\n" % e)
         else:
             self.wfile.write("Sleep sessions: <ul>")
             self.wfile.write("".join(["<li>" + repr(d) + "</li>" for d in data]))
             self.wfile.write("</ul>\n")
-
 
         self.wfile.write("END.<br/>\n")
 
@@ -159,6 +205,16 @@ class Handler(BaseHTTPServer.BaseHTTPRequestHandler):
             # Looks good, remember it
             with open("WCTOKEN", "w") as f:
                 f.write(wctoken)
+            with open("RECORD_ID", "w") as f:
+                f.write(self.server.conn.record_id)
+
+    def do_POST(self):
+        logger.debug("do_POST: will call do_GET to handle, after reading the request body")
+        content_length = int(self.headers['content-length'])
+        body = self.rfile.read(content_length)
+        logger.debug("Incoming request body=%r" % body)
+        self.body = body
+        return self.do_GET()
 
     def do_GET(self):
         logger.debug("do_GET: path=%s", self.path)
@@ -166,14 +222,21 @@ class Handler(BaseHTTPServer.BaseHTTPRequestHandler):
             if not self.server.conn.is_authorized():
                 logger.debug("Not authorized yet, redir to HV")
                 # Start by redirecting user to HealthVault to authorize us
-                url = self.server.conn.authorization_url('http://localhost:8000/authtoken')
+                record_id = None
+                if os.path.exists("RECORD_ID"):
+                    with open("RECORD_ID", "r") as f:
+                        record_id = f.read()
+                url = self.server.conn.authorization_url('%s/authtoken' % BASE_URL, record_id)
                 self.send_response(307)
                 self.send_header("Location", url)
                 self.end_headers()
-                self.wfile.close()
                 return
             self.show_data()
-            self.wfile.close()
+            return
+
+        if self.path == '/submit':
+            self.send_response(200)
+            self.end_headers()
             return
 
         if self.path.startswith('/authtoken?'):
@@ -188,7 +251,6 @@ class Handler(BaseHTTPServer.BaseHTTPRequestHandler):
                 self.send_response(200)
                 self.end_headers()
                 self.wfile.write("Auth was rejected (by the user?)")
-                self.wfile.close()
                 return
             if target not in ('AppAuthSuccess', 'SelectedRecordChanged'):
                 logger.debug('no idea')
@@ -196,7 +258,6 @@ class Handler(BaseHTTPServer.BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write("Unexpected authtoken target=%s\n" % target)
                 self.wfile.write(self.path)
-                self.wfile.close()
                 return
             if not 'wctoken' in query:
                 logger.debug('no wctoken given')
@@ -215,7 +276,6 @@ class Handler(BaseHTTPServer.BaseHTTPRequestHandler):
                 self.send_response(307)
                 self.send_header("Location", "/")
                 self.end_headers()
-                self.wfile.close()
                 return
 
             logger.debug("Got token okay, redir to /")
@@ -223,26 +283,38 @@ class Handler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.send_response(307)
             self.send_header("Location", "/")
             self.end_headers()
-            self.wfile.close()
             return
 
         # Tired of seeing errors for this one
         if self.path == '/favicon.ico':
             self.send_response(200)
             self.end_headers()
-            self.wfile.close()
             return
 
         # We get here for any URL we don't recognize
-        print "UNHANDLED URL!!!!  %r" % self.path
+        # Let's do an actual 404
+        self.send_response(404)
+        self.end_headers()
+        self.wfile.write("Unknown URL: %r" % self.path)
+        return
 
+
+class SSLServer(BaseHTTPServer.HTTPServer):
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+
+        May be overridden.
+
+        """
+        self.socket = wrap_socket(self.socket, server_side=True, certfile='cert.pem')
+        BaseHTTPServer.HTTPServer.server_bind(self)
 
 # Start server
 server_address = ('', 8000)
-httpd = BaseHTTPServer.HTTPServer(server_address, Handler)
+httpd = SSLServer(server_address, Handler)
 
 # Point user's browser at our starting URL
-webbrowser.open("http://localhost:8000/")
+webbrowser.open("%s/" % BASE_URL)
 
 # And handle requests forever
 httpd.serve_forever()

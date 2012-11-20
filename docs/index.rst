@@ -3,62 +3,75 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-Welcome to python-healthvault's documentation!
-==============================================
+Welcome to python-healthvault
+=============================
 
 Contents:
 
 .. toctree::
    :maxdepth: 2
 
+   overview
    keys
    api
 
 This is a library to help Python programs access Microsoft's HealthVault.
 
-If you're not familiar with HealthVault, start here: http://msdn.microsoft.com/en-us/healthvault/default
+If you're not familiar with HealthVault, start at
+the `HealthVault Developer Center <http://msdn.microsoft.com/en-us/healthvault/default>`_.
 
-- Read this early and repeatedly: HealthVault platform technical overview http://msdn.microsoft.com/en-us/healthvault/jj127438
-- Also: HealthVault development basics http://msdn.microsoft.com/en-us/healthvault/jj127014.aspx
+Here's a brief map to where to find information in the HealthVault documentation.
 
-I think you go to the HealthVault Application Configuration Center (ACC) http://msdn.microsoft.com/en-us/library/jj582782.aspx
-to create your account and define a HealthVault application.
+* `General concepts <http://msdn.microsoft.com/en-us/healthvault/jj127438>`_
+* `Prose documentation of methods and concepts <http://msdn.microsoft.com/en-us/library/ff803616.aspx>`_
+* `List of methods and links to the schemas for their requests and responses <http://developer.healthvault.com/pages/methods/methods.aspx>`_
+* `List of types with their type IDs, links to their schemas, and tools to create sample instances, examine them, and validate
+  your own XML <http://developer.healthvault.com/pages/types/types.aspx>`_
+* `A completely different list of methods and types with links to details of their schemas <http://developer.healthvault.com/sdk/docs/index.html>`_ -
+  this one takes more clicking around but is more accessible if reading XSD isn't as familiar.
+* `Status codes returned on errors <http://msdn.microsoft.com/en-us/library/hh567902.aspx>`_
 
-Create a new public/private key pair and upload the public key to the ACC http://msdn.microsoft.com/en-us/library/ff803601.aspx
+And some useful online tools.
 
+* Go to the `HealthVault Application Configuration Center (ACC) <http://msdn.microsoft.com/en-us/library/jj582782.aspx>`_
+  to create your account and define a HealthVault application.
+* `Create and update a personal HV account on the pre-production server <https://account.healthvault-ppe.com/>`_
+* `Create sample data <http://developer.healthvault.com/pages/types/types.aspx>`_
 
-If you're developing a web application, you'll start by redirecting your user to the HealthVault APPAUTH
-link to authorize your app to access their data.
-When that's done, MS will redirect the user back to a URL in your app, passing an auth token
-(http://msdn.microsoft.com/en-us/library/ff803620.aspx#APPAUTH) which your app will save.
+Once you have a general idea of how HealthVault works, you can continue reading
+the :ref:`overview`.
 
-Next, construct a `HealthVaultConn` object.  You'll use
-that object to access the user's HealthVault data.
+Installation
+------------
 
-To construct a `HealthVaultConn` object, you'll need the following information:
+Use ``pip install python-healthvault``.  This library is PyPI.
 
-* Your public and private keys - you create these; see :ref:`keys`.
-* Your APP ID - a UUID, this is assigned when you create your app on the ACC
-* Your public key's thumbprint - the ACC will display this after you upload a public certificate
-* The user's auth token - this is passed when HealthVault redirects the user to your app after they have authorized it
-* The server address - e.g. for pre-production, 'platform.healthvault-ppe.com' (default) or
-  'platform.healthvault-ppe.co.uk' for Europe. For production, drop the "-ppe".
+Requirements
+------------
 
-* :ref:`keys`
+These will be installed automatically when you ``pip install`` python-healthvault,
+if not already available.
 
+* `pycrypto <https://www.dlitz.net/software/pycrypto/>`_
+* `sphinx <http://sphinx.pocoo.org/>`_
 
-To write:
+Tests
+-----
 
-* INSTALLATION
-* REQUIREMENTS
-* API DOC
-* TESTS
+To run the tests, install `tox <http://tox.testrun.org/latest/>`_ (``pip install tox``)
+then just type ``tox`` in the top directory.
 
-Until that's done, it might be helpful to look at tests/simple.py as an example.
-You can run it like this::
+Sample app
+----------
+
+`tests/simple.py` is provided as an example. You might need to edit a few things
+at the top.  Then you can run it like this::
 
     python -m tests.simple
 
+It will open a page in your browser, direct you to HealthVault to log in and
+authorize access to a person's data, then redirect back to the sample
+app and display a page showing some of the available data for that person.
 
 Indices and tables
 ==================
