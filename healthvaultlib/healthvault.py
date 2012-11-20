@@ -33,10 +33,8 @@ import xml.etree.ElementTree as ET
 from .datatypes import DataType
 from .hvcrypto import HVCrypto
 from .xmlutils import (when_to_datetime, int_or_none, text_or_none, boolean_or_none, parse_weight,
-                       parse_device, elt_to_string, parse_exercise, parse_height, parse_sleep_session, pretty_xml, parse_subscription, parse_notification, parse_blood_glucose, parse_connect_request, elt_as_string)
-
-from Crypto.Random import get_random_bytes
-
+                       parse_device, elt_to_string, parse_exercise, parse_height, parse_sleep_session,
+                       pretty_xml, parse_blood_glucose, elt_as_string)
 
 logger = logging.getLogger(__name__)
 
@@ -99,7 +97,7 @@ class HealthVaultConn(object):
     retrieve the record id and person id for the record and person that the user has granted
     access to.
 
-    Check the record id (:py:attr:`.record_id`) and person ID (:py:attr:`.person_id`). The user could
+    Check the person ID (:py:attr:`.person_id`) and record id (:py:attr:`.record_id`). The user could
     sign in to HealthVault as another user, or change the person they're granting access to, and this
     is the only way for an application to tell that this `HealthVaultConn` object is now accessing data
     for a different person.
@@ -121,6 +119,7 @@ class HealthVaultConn(object):
     record_id = None
     """
     The HealthVault record ID corresponding to the auth-token.  A string containing a UUID, or None.
+    This identifies uniquely the person whose data we are accessing.
     """
 
     def __init__(self, app_id, app_thumbprint, public_key, private_key, server=None, shell_server=None, wctoken=None):
@@ -174,7 +173,7 @@ class HealthVaultConn(object):
         self.record_id, self.person_id = self._get_record_id()
         self.authorized = True
 
-    def authorization_url(self, callback_url):
+    def authorization_url(self, callback_url, record_id=None):
         """Return the URL that the user needs to be redirected to in order to
         grant authorization to this app to access their data.
 
@@ -189,8 +188,14 @@ class HealthVaultConn(object):
             granted, and providing the wctoken value if so.  See also
             :py:meth:`connect`.
 
+        :param string record_id: Optionally request access to a particular person's
+            (patient's) data.
+
         """
-        targetqs = urlencode({'appid': self.app_id, 'redirect': callback_url})
+        d = {'appid': self.app_id, 'redirect': callback_url}
+        if record_id is not None:
+            d['extrecordid'] = record_id
+        targetqs = urlencode(d)
         return "https://%s/redirect.aspx?%s" % (self.shell_server, urlencode({'target': "APPAUTH", 'targetqs': targetqs}))
 
     def _get_auth_token(self):
@@ -391,7 +396,7 @@ class HealthVaultConn(object):
         return self._send_request(payload)
 
     def associate_alternate_id(self, idstring):
-        """Associate some identification string from your application to the current person.
+        """Associate some identification string from your application to the current person and record.
 
         This uses `AssociateAlternateId <https://platform.healthvault-ppe.com/platform/XSD/method-associatealternateid.xsd>`_
 
@@ -408,7 +413,7 @@ class HealthVaultConn(object):
         self._build_and_send_request("AssociateAlternateId", info)
 
     def get_alternate_ids(self):
-        """Return the list of alternate IDs that have been associated with this person by this application.
+        """Return the list of alternate IDs that have been associated with this person and record by this application.
 
         This uses `GetAlternateIds <https://platform.healthvault-ppe.com/platform/XSD/response-getalternateids.xsd>`_
 
@@ -419,7 +424,7 @@ class HealthVaultConn(object):
         return [elt.text for elt in info.findall("alternate-ids/alternate-id")]
 
     def disassociate_alternate_id(self, idstring):
-        """Disassociate some identification string from your application from the current person.
+        """Disassociate some identification string from your application from the current person and record.
 
         This uses `DisassociateAlternateId <https://platform.healthvault-ppe.com/platform/XSD/method-disassociatealternateid.xsd>`_
 

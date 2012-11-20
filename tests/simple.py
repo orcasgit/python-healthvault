@@ -76,8 +76,13 @@ class Handler(BaseHTTPServer.BaseHTTPRequestHandler):
                     public_key=APP_PUBLIC_KEY,
                     private_key=APP_PRIVATE_KEY
                 )
+            else:
+                if self.server.conn.record_id:
+                    with open("RECORD_ID", "w") as f:
+                        f.write(self.server.conn.record_id)
 
-        # And this is a stupid old-style class, sigh
+
+            # And this is a stupid old-style class, sigh
         # AND THE __init__ PROCESSES THE REQUEST!  ARGGG
         BaseHTTPServer.BaseHTTPRequestHandler.__init__(self, request, client_address, server)
 
@@ -200,6 +205,8 @@ class Handler(BaseHTTPServer.BaseHTTPRequestHandler):
             # Looks good, remember it
             with open("WCTOKEN", "w") as f:
                 f.write(wctoken)
+            with open("RECORD_ID", "w") as f:
+                f.write(self.server.conn.record_id)
 
     def do_POST(self):
         logger.debug("do_POST: will call do_GET to handle, after reading the request body")
@@ -215,7 +222,11 @@ class Handler(BaseHTTPServer.BaseHTTPRequestHandler):
             if not self.server.conn.is_authorized():
                 logger.debug("Not authorized yet, redir to HV")
                 # Start by redirecting user to HealthVault to authorize us
-                url = self.server.conn.authorization_url('%s/authtoken' % BASE_URL)
+                record_id = None
+                if os.path.exists("RECORD_ID"):
+                    with open("RECORD_ID", "r") as f:
+                        record_id = f.read()
+                url = self.server.conn.authorization_url('%s/authtoken' % BASE_URL, record_id)
                 self.send_response(307)
                 self.send_header("Location", url)
                 self.end_headers()
