@@ -205,7 +205,7 @@ class HealthVaultConn(object):
         targetqs = urlencode(d)
         return "https://%s/redirect.aspx?%s" % (self.shell_server, urlencode({'target': "APPAUTH", 'targetqs': targetqs}))
 
-    def deauthorize_url(self, callback_url=None):
+    def deauthorization_url(self, callback_url=None):
         """Return the URL that the user needs to be redirected to in order to
         cancel their authorization for this app to access their data. Useful
         for a logout action.

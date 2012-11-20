@@ -219,13 +219,13 @@ class ConnTests(TestCase):
                 wctoken=None, server="6", shell_server="shell.server"
             )
         c.auth_token = "FakeToken"
-        url = c.deauthorize_url("http://ourown.server.com/with/some/parts/")
+        url = c.deauthorization_url("http://ourown.server.com/with/some/parts/")
         self.assertEqual(
             'https://shell.server/redirect.aspx?targetqs=redirect%3Dhttp%253A%252F%252Fourown.server.com'
             '%252Fwith%252Fsome%252Fparts%252F%26cred_token%3DFakeToken%26appid%3D123&target=APPSIGNOUT',
             url)
         # callback URL is optional
-        url = c.deauthorize_url()
+        url = c.deauthorization_url()
         self.assertEqual(
             'https://shell.server/redirect.aspx?targetqs=cred_token%3DFakeToken%26appid%3D123&target=APPSIGNOUT',
             url
