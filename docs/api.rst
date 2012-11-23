@@ -10,3 +10,10 @@ Connection and calls
     :members:
 
 .. autoclass:: healthvaultlib.healthvault.HealthVaultException
+
+Constants
+---------
+
+.. autoclass:: healthvaultlib.targets.ApplicationTarget
+    :members:
+    :undoc-members:
