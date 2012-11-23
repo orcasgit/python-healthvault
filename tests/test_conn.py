@@ -187,11 +187,49 @@ class ConnTests(TestCase):
                     wctoken=None, server="6", shell_server="shell.server"
                 )
         url = c.authorization_url("http://ourown.server.com/with/some/parts/")
-#        print repr(url)
         self.assertEqual(
             'https://shell.server/redirect.aspx?targetqs=redirect%3Dhttp%253A%252F%252Fourown.server.com%252'
             'Fwith%252Fsome%252Fparts%252F%26appid%3D123&target=APPAUTH',
+            url
+        )
+        # callback URL is optional
+        url = c.authorization_url()
+        self.assertEqual(
+            'https://shell.server/redirect.aspx?targetqs=appid%3D123&target=APPAUTH',
+            url
+        )
+        # Can include record_id
+        url = c.authorization_url(record_id="FooBar")
+        self.assertEqual(
+            'https://shell.server/redirect.aspx?targetqs=extrecordid%3DFooBar%26appid%3D123&target=APPAUTH',
+            url
+        )
+        # Or both
+        url = c.authorization_url("http://ourown.server.com/with/some/parts/", record_id="FooBar")
+        self.assertEqual(
+            'https://shell.server/redirect.aspx?targetqs=redirect%3Dhttp%253A%252F%252Fourown.server.com'
+            '%252Fwith%252Fsome%252Fparts%252F%26extrecordid%3DFooBar%26appid%3D123&target=APPAUTH',
+            url
+        )
+
+    def test_deauthorization_url(self):
+        with mock.patch.object(HealthVaultConn, '_get_auth_token'):
+            c = HealthVaultConn(
+                app_id="123", app_thumbprint="2", public_key=TEST_PUBLIC_KEY, private_key=TEST_PRIVATE_KEY,
+                wctoken=None, server="6", shell_server="shell.server"
+            )
+        c.auth_token = "FakeToken"
+        url = c.deauthorization_url("http://ourown.server.com/with/some/parts/")
+        self.assertEqual(
+            'https://shell.server/redirect.aspx?targetqs=redirect%3Dhttp%253A%252F%252Fourown.server.com'
+            '%252Fwith%252Fsome%252Fparts%252F%26cred_token%3DFakeToken%26appid%3D123&target=APPSIGNOUT',
             url)
+        # callback URL is optional
+        url = c.deauthorization_url()
+        self.assertEqual(
+            'https://shell.server/redirect.aspx?targetqs=cred_token%3DFakeToken%26appid%3D123&target=APPSIGNOUT',
+            url
+        )
 
     def test_build_and_send_request(self):
         # construct a conn, mocking all the real work

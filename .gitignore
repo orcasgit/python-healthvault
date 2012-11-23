@@ -5,3 +5,6 @@ dist
 MANIFEST
 build
 python_healthvault.egg-info
+*.egg
+.tox
+.coverage

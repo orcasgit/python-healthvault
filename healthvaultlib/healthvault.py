@@ -173,9 +173,13 @@ class HealthVaultConn(object):
         self.record_id, self.person_id = self._get_record_id()
         self.authorized = True
 
-    def authorization_url(self, callback_url, record_id=None):
+    def authorization_url(self, callback_url=None, record_id=None):
         """Return the URL that the user needs to be redirected to in order to
         grant authorization to this app to access their data.
+
+        *The callback_url parameter is only valid during development*. The production server will
+        always redirect the user to the application's configured ActionURL.
+        It might also fail the request if a callback URL is even passed.
 
         :note: Use a 307 (temporary) redirect. The user's browser might cache
             a 301 (permanent) redirect, resulting in the user not being able to
@@ -191,12 +195,40 @@ class HealthVaultConn(object):
         :param string record_id: Optionally request access to a particular person's
             (patient's) data.
 
+        See `APPAUTH <http://msdn.microsoft.com/en-us/library/ff803620.aspx#APPAUTH>`_.
         """
-        d = {'appid': self.app_id, 'redirect': callback_url}
+        d = {'appid': self.app_id}
+        if callback_url is not None:
+            d['redirect'] = callback_url
         if record_id is not None:
             d['extrecordid'] = record_id
         targetqs = urlencode(d)
         return "https://%s/redirect.aspx?%s" % (self.shell_server, urlencode({'target': "APPAUTH", 'targetqs': targetqs}))
+
+    def deauthorization_url(self, callback_url=None):
+        """Return the URL that the user needs to be redirected to in order to
+        cancel their authorization for this app to access their data. Useful
+        for a logout action.
+
+        HealthVault will redirect the user to your application's ActionURL
+        with a `target` parameter of `SIGNOUT`.  During development only,
+        a different URL may be used by passing it as `callback_url`.
+
+        *The callback_url parameter is only valid during development*. The production server will
+        always redirect the user to the application's configured ActionURL.
+        It might also fail the request if a callback URL is even passed.
+
+        :param URL callback_url: The URL that the user will be redirected back to after
+            they have finished interacting with HealthVault.
+
+        See `APPSIGNOUT <http://msdn.microsoft.com/en-us/library/ff803620.aspx#APPSIGNOUT>`_.
+        """
+        d = {'appid': self.app_id, 'cred_token': self.auth_token}
+        if callback_url is not None:
+            d['redirect'] = callback_url
+        targetqs = urlencode(d)
+        return "https://%s/redirect.aspx?%s" % (self.shell_server, urlencode({'target': "APPSIGNOUT", 'targetqs': targetqs}))
+
 
     def _get_auth_token(self):
         """Call HealthVault and get a session token, returning it.
