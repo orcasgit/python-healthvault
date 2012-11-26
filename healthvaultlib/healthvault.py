@@ -527,7 +527,7 @@ class HealthVaultConn(object):
         :raises: HealthVaultException if the request fails in some way.
         """
 
-        info = self.get_things(DataType.basic_demographic_data)
+        info = self.get_things(DataType.BASIC_DEMOGRAPHIC_DATA)
 
         basic = info.find('group/thing/data-xml/basic')
         return dict(
@@ -547,7 +547,7 @@ class HealthVaultConn(object):
         :param datetime.datetime max_date: Only things with an effective datetime before this are returned.
         :returns: a list of dictionaries.
         """
-        info = self.get_things(DataType.blood_glucose_measurement, min_date, max_date, debug=debug)
+        info = self.get_things(DataType.BLOOD_GLUCOSE_MEASUREMENT, min_date, max_date, debug=debug)
         return [parse_blood_glucose(item) for item in info.findall('group/thing/data-xml/blood-glucose')]
 
     def get_blood_pressure_measurements(self, min_date=None, max_date=None):
@@ -578,7 +578,7 @@ class HealthVaultConn(object):
         :type max_date: datetime.datetime
         :raises: HealthVaultException if the request fails in some way.
         """
-        info = self.get_things(DataType.blood_pressure_measurements, min_date, max_date)
+        info = self.get_things(DataType.BLOOD_PRESSURE_MEASUREMENTS, min_date, max_date)
 
         things = []
         for thing in info.findall('group/thing/data-xml/blood-pressure'):
@@ -599,7 +599,7 @@ class HealthVaultConn(object):
         :param datetime.datetime max_date: Only things with an effective datetime before this are returned.
         :returns: list of dictionaries
         """
-        info = self.get_things(DataType.height_measurements, min_date, max_date)
+        info = self.get_things(DataType.HEIGHT_MEASUREMENTS, min_date, max_date)
         return [parse_height(e) for e in info.findall('group/thing/data-xml/height')]
 
     def get_weight_measurements(self, min_date=None, max_date=None):
@@ -620,7 +620,7 @@ class HealthVaultConn(object):
 
         :raises: HealthVaultException if the request fails in some way.
         """
-        info = self.get_things(DataType.weight_measurements, min_date, max_date)
+        info = self.get_things(DataType.WEIGHT_MEASUREMENTS, min_date, max_date)
         return [parse_weight(e) for e in info.findall('group/thing/data-xml/weight')]
 
     def get_devices(self):
@@ -657,7 +657,7 @@ class HealthVaultConn(object):
 
         :raises: HealthVaultException if the request fails in some way.
         """
-        info = self.get_things(DataType.devices)
+        info = self.get_things(DataType.DEVICES)
         # http://developer.healthvault.com/sdk/docs/urn.com.microsoft.wc.thing.equipment.device.1.inlinetype.html
         return [parse_device(e) for e in info.findall('group/thing/data-xml/device')]
 
@@ -669,7 +669,7 @@ class HealthVaultConn(object):
         :param datetime.datetime max_date: Only things with an effective datetime before this are returned.
         :returns: list of dictionaries with exercise things
         """
-        info = self.get_things(DataType.exercise, min_date, max_date)
+        info = self.get_things(DataType.EXERCISE, min_date, max_date)
         return [parse_exercise(e) for e in info.findall('group/thing/data-xml/exercise')]
 
     def get_sleep_sessions(self, min_date=None, max_date=None):
@@ -680,5 +680,5 @@ class HealthVaultConn(object):
         :param datetime.datetime max_date: Only things with an effective datetime before this are returned.
         :returns: list of dictionaries with sleep sessions.
         """
-        info = self.get_things(DataType.sleep_sessions, min_date, max_date)
+        info = self.get_things(DataType.SLEEP_SESSIONS, min_date, max_date)
         return [parse_sleep_session(s) for s in info.findall('group/thing/data-xml/sleep-am')]
