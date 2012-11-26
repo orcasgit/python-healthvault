@@ -14,6 +14,7 @@ Contents:
    overview
    keys
    api
+   history
 
 This is a library to help Python programs access Microsoft's HealthVault.
 
