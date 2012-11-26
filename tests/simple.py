@@ -15,6 +15,7 @@ import os
 from urlparse import urlparse, parse_qs
 import webbrowser
 from healthvaultlib.healthvault import HealthVaultConn, HealthVaultException
+from healthvaultlib.datatypes import DataType
 
 BASE_URL = "https://localhost:8000"
 
@@ -117,44 +118,37 @@ class Handler(BaseHTTPServer.BaseHTTPRequestHandler):
         #conn.get_authorized_people()
         #conn.get_application_info()
 
+        # Use batch to get some things
         try:
-            data = conn.get_basic_demographic_info()
+            result = conn.batch_get([{'datatype': DataType.BASIC_DEMOGRAPHIC_DATA},
+                                     {'datatype': DataType.BLOOD_GLUCOSE_MEASUREMENT},
+                                     {'datatype': DataType.WEIGHT_MEASUREMENTS},
+                                     {'datatype': DataType.DEVICES}
+                                     ])
         except HealthVaultException as e:
-            self.wfile.write("Exception getting basic demographic data: %s<br/>\n" % e)
+            self.wfile.write("Exception getting batch data: %s<br/>\n" % e)
         else:
+            demographic_data, glucose_data, weight_data, device_data = result
+
             self.wfile.write("Demographic data:<br/>\n")
-            self.wfile.write(data)
+            self.wfile.write(demographic_data)
             self.wfile.write("<br/>\n")
 
-        try:
-            data = conn.get_blood_glucose_measurements(debug=True)
-        except HealthVaultException as e:
-            self.wfile.write("Exception getting blood glucose: %s<br/>\n" % e)
-        else:
             self.wfile.write("Blood glucose: <ul>")
-            self.wfile.write("".join(["<li>" + repr(d) + "</li>" for d in data]))
+            self.wfile.write("".join(["<li>" + repr(d) + "</li>" for d in glucose_data]))
             self.wfile.write("</ul>\n")
 
-        try:
-            data = conn.get_weight_measurements()
-        except HealthVaultException as e:
-            self.wfile.write("Exception getting weight measurements: %s<br/>\n" % e)
-        else:
             self.wfile.write("WEIGHTS:<br/>\n<ul>\n")
-            for w in data:
+            for w in weight_data:
                 self.wfile.write("<li>%s</li>\n" % str(w))
             self.wfile.write("</ul>\n")
 
-        try:
-            data = conn.get_devices()
-        except HealthVaultException as e:
-            self.wfile.write("Exception getting device data: %s<br/>\n" % e)
-        else:
             self.wfile.write("DEVICES:<br/>\n<ul>\n")
-            for w in data:
+            for w in device_data:
                 self.wfile.write("<li>%s</li>\n" % str(w))
             self.wfile.write("</ul>\n")
 
+        # Get some other things individually
         try:
             data = conn.get_blood_pressure_measurements()
         except HealthVaultException as e:

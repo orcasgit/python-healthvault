@@ -329,17 +329,20 @@ class ConnTests(TestCase):
         """
         # construct a conn, mocking all the real work
         with mock.patch.object(HealthVaultConn, '_get_auth_token') as gat:
+            gat.return_value = "authtoken"
             with mock.patch.object(HealthVaultConn, '_get_record_id') as gri:
-                gri.return_value = 1, 2
+                gri.return_value = "1", "2"
                 c = HealthVaultConn(
                         app_id="1", app_thumbprint="2", public_key=TEST_PUBLIC_KEY, private_key=TEST_PRIVATE_KEY,
                         wctoken="5", server="6", shell_server="7"
                     )
-        # call get_basic_demographic_info(), mocking the actual network call
-        with mock.patch.object(HealthVaultConn, 'get_things') as getThings:
-            getThings.return_value = ET.fromstring(xml)
-            retval = getattr(c, methodname)()
-#        print retval
+        # call the method under test, mocking the actual network call
+        with mock.patch.object(HealthVaultConn, '_build_and_send_request') as basr:
+            # convert the xml we were given (top element is <info>) to look like what HealthVault would return
+            full_xml_response = '<?xml version="1.0" encoding="ISO-8859-1"?><unneededtag>' + xml + "</unneededtag>"
+            basr.return_value = (None, full_xml_response, ET.fromstring(full_xml_response))
+            method_to_test = getattr(c, methodname)
+            retval = method_to_test()
         self.assertEqual(expected, retval)
 
     def test_basic_demographic_info(self):

@@ -5,6 +5,8 @@ import logging
 
 import xml.etree.ElementTree as ET
 
+from .datatypes import DataType
+
 
 logger = logging.getLogger(__name__)
 
@@ -531,3 +533,57 @@ def parse_connect_request(elt):
         app_id=text_or_none(elt, 'app-id'),
         external_id=text_or_none(elt, 'external-id'),
     )
+
+def parse_group(group):
+    """Given an element that contains a <group>...</group>
+    return whatever parsing that group as a response to the specific API
+    would have returned.
+
+    :param elementtree group: A `group` element.  Its type is inferred
+    from the <thing><type-id>xxxxxxxx</type-id></thing> value.
+    """
+
+    data_type = group.find('thing/type-id').text
+
+    # FIXME: should we replace all these if/elif clauses with a table-driven implementation?
+    if data_type == DataType.BASIC_DEMOGRAPHIC_DATA:
+        basic = group.find('thing/data-xml/basic')
+        return dict(
+            gender=text_or_none(basic, 'gender'),
+            birthyear=int_or_none(basic, 'birthyear'),
+            country_text=text_or_none(basic, 'country/text'),
+            country_code=text_or_none(basic, 'country/code/value'),
+            postcode=text_or_none(basic, 'postcode'),
+            state=text_or_none(basic,'state/text')
+        )
+    elif data_type == DataType.BLOOD_GLUCOSE_MEASUREMENT:
+        return [parse_blood_glucose(item) for item in group.findall('thing/data-xml/blood-glucose')]
+    elif data_type == DataType.BLOOD_PRESSURE_MEASUREMENTS:
+        things = []
+        for thing in group.findall('thing/data-xml/blood-pressure'):
+            things.append(dict(
+                when = when_to_datetime(thing.find("when")),
+                systolic = int_or_none(thing, 'systolic'),
+                diastolic = int_or_none(thing, 'diastolic'),
+                pulse = int_or_none(thing, 'pulse'),
+                irregular_heartbeat = boolean_or_none(thing, 'irregular-heartbeat'),
+            ))
+        return things
+    elif data_type == DataType.DEVICES:
+        return [parse_device(e) for e in group.findall('thing/data-xml/device')]
+    elif data_type == DataType.EXERCISE:
+        return [parse_exercise(e) for e in group.findall('thing/data-xml/exercise')]
+    elif data_type == DataType.HEIGHT_MEASUREMENTS:
+        return [parse_height(e) for e in group.findall('thing/data-xml/height')]
+    elif data_type == DataType.SLEEP_SESSIONS:
+        return [parse_sleep_session(s) for s in group.findall('thing/data-xml/sleep-am')]
+    elif data_type == DataType.WEIGHT_MEASUREMENTS:
+        return [parse_weight(e) for e in group.findall('thing/data-xml/weight')]
+    else:
+        # import here to avoid circular imports
+        from healthvaultlib.healthvault import HealthVaultException
+        raise HealthVaultException("Unknown data type in group response: name='%s'" % data_type)
+
+
+
+
