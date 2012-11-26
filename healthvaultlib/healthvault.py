@@ -120,10 +120,11 @@ class HealthVaultConn(object):
 
     These parameters are related to your application and should not generally change:
 
-    :param string app_id: the application ID (a UUID)
+    :param string app_id: the application ID (UUID)
     :param string app_thumbprint: the thumbprint displayed in the ACC for the public key we're using
-    :param long public_key: the public key we're using
-    :param long private_key: the private key we're using
+        (40 hex digits)
+    :param long public_key: the public key we're using (a very long number)
+    :param long private_key: the private key we're using (a very long number)
     :param string server: (optional), the hostname of the server to connect to, defaults to
         "platform.healthvault-ppe.com", the pre-production US server
     :param string shell_server: (optional), the hostname of the shell redirect server to connect to, defaults to
@@ -134,22 +135,23 @@ class HealthVaultConn(object):
 
     :param string sharedsec: a random string that HealthVaultConn generates if none is passed in. If you save
        an auth_token, you need to save this with it and pass them both into any new HealthVaultConn that you
-       want to use them.
+       want to use them. (string containing a long integer, 20 chars or more)
     :param string auth_token: a long, random-looking string given to us by HealthVault when we authenticate
        our application with them. It's used along with the other cryptographic data in later calls. If you save
        this, save the sharedsec that goes with it and pass them both into any new HealthVaultConn that you
-       want to use them.
+       want to use them.  (240 printable ASCII chars)
 
     These parameters can be used to save re-establishing authorization for a particular patient's
     data,  but need to be saved from another object. These are specific to accessing one person's
     data:
 
     :param string wctoken: the token returned from APPAUTH. If not available, leave it out and call
-       :py:meth:`.connect(wctoken)` later.
+       :py:meth:`.connect(wctoken)` later.  (200 printable ASCII chars)
     :param string record_id: if you already know the wctoken and have saved the corresponding record_id, you can
        pass the record_id along with the wctoken to save a network call to look up the record_id.  Note that if
        the wctoken is found to be invalid (probably expired), the record_id might not be correct when you get a
        new wctoken, so you should set your HealthVaultConn.record_id back to None before getting the new wctoken.
+       (UUID)
 
     :raises: :py:exc:`HealthVaultException` if there's any problem connecting to HealthVault or getting authorized.
     """
@@ -228,7 +230,7 @@ class HealthVaultConn(object):
 
         :param string record_id: Optionally request access to a particular person's
             (patient's) data.  If this is not passed and this `HealthVaultConn` object
-            has a record_id associated with it, that will be used.
+            has a record_id associated with it, that will be used. (UUID)
 
         :param URL callback_url: The URL that the user will be redirected back to after
             they have finished interacting with HealthVault. It will have query
