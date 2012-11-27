@@ -55,7 +55,8 @@ The `record_id` is a permanent identifier for that individual (possibly unique t
 and the application can save it with that individual's local data.
 
 The `wctoken` will expire fairly quickly (less than an hour?) and the application needs to allow
-for that.  When it expires, some call to HealthVault will fail with an error. The application
+for that.  When it expires, some call to HealthVault will fail with an error 7,
+"The credential token has expired.". The application
 should repeat the original authorization process, redirecting the user using `authorization_url`
 and getting the `wctoken` on a subsequent request. However, in this case the application already
 knows the `record_id`. It should pass that `record_id` to `authorization_url` to force the
