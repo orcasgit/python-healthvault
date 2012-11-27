@@ -6,6 +6,7 @@ import logging
 import xml.etree.ElementTree as ET
 
 from .datatypes import DataType
+from healthvaultlib.exceptions import HealthVaultException
 
 
 logger = logging.getLogger(__name__)
@@ -581,7 +582,6 @@ def parse_group(group):
         return [parse_weight(e) for e in group.findall('thing/data-xml/weight')]
     else:
         # import here to avoid circular imports
-        from healthvaultlib.healthvault import HealthVaultException
         raise HealthVaultException("Unknown data type in group response: name='%s'" % data_type)
 
 

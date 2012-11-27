@@ -1,4 +1,4 @@
-from healthvaultlib.healthvault import HealthVaultException
+from healthvaultlib.exceptions import HealthVaultException
 
 class TestException(object):
     def test_no_code(self):

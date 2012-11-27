@@ -6,8 +6,9 @@ from unittest import TestCase
 import xml.etree.ElementTree as ET
 
 import mock
+from healthvaultlib.exceptions import HealthVaultException
 
-from healthvaultlib.healthvault import HealthVaultConn, HealthVaultException
+from healthvaultlib.healthvault import HealthVaultConn
 from healthvaultlib.xmlutils import elt_to_string, elt_as_string
 
 
@@ -31,7 +32,7 @@ class ConnTests(TestCase):
         and return it"""
         with mock.patch.object(HealthVaultConn, '_get_auth_token'):
             with mock.patch.object(HealthVaultConn, '_get_record_id') as gri:
-                gri.return_value = 8, 9
+                gri.return_value = 8
                 c = HealthVaultConn(
                     app_id="1", app_thumbprint="2", public_key=TEST_PUBLIC_KEY, private_key=TEST_PRIVATE_KEY,
                     wctoken="5", server="6", shell_server="7"
@@ -42,7 +43,7 @@ class ConnTests(TestCase):
         # construct a conn, mocking all the real work
         with mock.patch.object(HealthVaultConn, '_get_auth_token') as gat:
             with mock.patch.object(HealthVaultConn, '_get_record_id') as gri:
-                gri.return_value = 8, 9
+                gri.return_value = 8
                 c = HealthVaultConn(
                         app_id="1", app_thumbprint="2", public_key=TEST_PUBLIC_KEY, private_key=TEST_PRIVATE_KEY,
                         wctoken="5", server="6", shell_server="7"
@@ -55,7 +56,6 @@ class ConnTests(TestCase):
         self.assertEqual("6", c.server)
         self.assertEqual("7", c.shell_server)
         self.assertEqual(8, c.record_id)
-        self.assertEqual(9, c.person_id)
         # We passed in a wctoken, make sure the methods got called that set up things with HealthVault
         gat.assert_any_call()
         gri.assert_any_call()
@@ -70,7 +70,7 @@ class ConnTests(TestCase):
         # then we can call connect with a wctoken and it'll do it then
         with mock.patch.object(HealthVaultConn, '_get_auth_token') as gat:
             with mock.patch.object(HealthVaultConn, '_get_record_id') as gri:
-                gri.return_value = 1, 2
+                gri.return_value = 1
                 c = HealthVaultConn(
                         app_id="1", app_thumbprint="2", public_key=TEST_PUBLIC_KEY, private_key=TEST_PRIVATE_KEY,
                         wctoken=None, server="6", shell_server="7"
@@ -82,7 +82,7 @@ class ConnTests(TestCase):
         self.assertIsNotNone(c.auth_token)
         with mock.patch.object(HealthVaultConn, '_get_auth_token') as gat:
             with mock.patch.object(HealthVaultConn, '_get_record_id') as gri:
-                gri.return_value = 8, 9
+                gri.return_value = 8
                 c.connect(wctoken="5")
         self.assertEqual("5", c.wctoken)
         gri.assert_any_call()
@@ -96,7 +96,7 @@ class ConnTests(TestCase):
             return_tree = ET.fromstring(return_xml)
             sr.return_value = 4, return_xml, return_tree
             with mock.patch.object(HealthVaultConn, '_get_record_id') as gri:
-                gri.return_value = 1, 2
+                gri.return_value = 1
                 c = HealthVaultConn(
                     app_id="1", app_thumbprint="2", public_key=TEST_PUBLIC_KEY, private_key=TEST_PRIVATE_KEY,
                     wctoken=None, server="6", shell_server="7"
@@ -113,7 +113,7 @@ class ConnTests(TestCase):
             return_tree = ET.fromstring(return_xml)
             sr.return_value = 4, return_xml, return_tree
             with mock.patch.object(HealthVaultConn, '_get_record_id') as gri:
-                gri.return_value = 1, 2
+                gri.return_value = 1
                 self.assertRaises(HealthVaultException, HealthVaultConn,
                     app_id="1", app_thumbprint="2", public_key=TEST_PUBLIC_KEY, private_key=TEST_PRIVATE_KEY,
                     wctoken=None, server="6", shell_server="7"
@@ -148,27 +148,7 @@ class ConnTests(TestCase):
                     app_id="1", app_thumbprint="2", public_key=TEST_PUBLIC_KEY, private_key=TEST_PRIVATE_KEY,
                     wctoken="fakewctoken", server="6", shell_server="7"
                 )
-            self.assertEqual("PERSON-ID", c.person_id)
             self.assertEqual("RECORD-ID", c.record_id)
-            # What if there's no person-id?
-            with mock.patch.object(HealthVaultConn, '_build_and_send_request') as basr:
-                xml = u'''<?xml version="1.0" ?>
-                <response>
-                    <x:info xmlns:x="urn:com.microsoft.wc.methods.response.GetPersonInfo">
-                        <person-info>
-                            <name>John Doe</name>
-                            <selected-record-id>RECORD-ID</selected-record-id>
-                        </person-info>
-                    </x:info>
-                </response>'''
-                tree = ET.fromstring(xml)
-                basr.return_value = 18, xml, tree
-                self.assertRaises(HealthVaultException,
-                    HealthVaultConn,
-                    app_id="1", app_thumbprint="2", public_key=TEST_PUBLIC_KEY, private_key=TEST_PRIVATE_KEY,
-                    wctoken="fakewctoken", server="6", shell_server="7"
-                )
-
 
     def test_is_authorized(self):
         with mock.patch.object(HealthVaultConn, '_get_auth_token'):
@@ -238,7 +218,7 @@ class ConnTests(TestCase):
         with mock.patch.object(HealthVaultConn, '_get_auth_token') as gat:
             with mock.patch.object(HealthVaultConn, '_get_record_id') as gri:
                 gat.return_value = AUTH_TOKEN
-                gri.return_value = "8", "9"
+                gri.return_value = "8"
                 c = HealthVaultConn(
                         app_id="1", app_thumbprint="2", public_key=TEST_PUBLIC_KEY, private_key=TEST_PRIVATE_KEY,
                         wctoken=WC_TOKEN, server="6", shell_server="7"
@@ -331,7 +311,7 @@ class ConnTests(TestCase):
         with mock.patch.object(HealthVaultConn, '_get_auth_token') as gat:
             gat.return_value = "authtoken"
             with mock.patch.object(HealthVaultConn, '_get_record_id') as gri:
-                gri.return_value = "1", "2"
+                gri.return_value = "1"
                 c = HealthVaultConn(
                         app_id="1", app_thumbprint="2", public_key=TEST_PUBLIC_KEY, private_key=TEST_PRIVATE_KEY,
                         wctoken="5", server="6", shell_server="7"

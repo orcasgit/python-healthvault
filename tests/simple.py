@@ -14,7 +14,8 @@ from ssl import wrap_socket
 import os
 from urlparse import urlparse, parse_qs
 import webbrowser
-from healthvaultlib.healthvault import HealthVaultConn, HealthVaultException
+from healthvaultlib.exceptions import HealthVaultException
+from healthvaultlib.healthvault import HealthVaultConn
 from healthvaultlib.datatypes import DataType
 
 BASE_URL = "https://localhost:8000"
@@ -59,13 +60,19 @@ class Handler(BaseHTTPServer.BaseHTTPRequestHandler):
                     if not wctoken:
                         os.remove("WCTOKEN")
 
+            record_id = None
+            if os.path.exists("RECORD_ID"):
+                with open("RECORD_ID", "r") as f:
+                    record_id = f.read()
+
             try:
                 self.server.conn = HealthVaultConn(
                     wctoken=wctoken,
                     app_id=APP_ID,
                     app_thumbprint=THUMBPRINT,
                     public_key=APP_PUBLIC_KEY,
-                    private_key=APP_PRIVATE_KEY
+                    private_key=APP_PRIVATE_KEY,
+                    record_id=record_id
                 )
             except HealthVaultException as e:
                 print e
@@ -75,7 +82,8 @@ class Handler(BaseHTTPServer.BaseHTTPRequestHandler):
                     app_id=APP_ID,
                     app_thumbprint=THUMBPRINT,
                     public_key=APP_PUBLIC_KEY,
-                    private_key=APP_PRIVATE_KEY
+                    private_key=APP_PRIVATE_KEY,
+                    record_id=record_id
                 )
             else:
                 if self.server.conn.record_id:
@@ -93,6 +101,10 @@ class Handler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.end_headers()
 
         conn = self.server.conn
+
+        if self.server.conn.record_id:
+            with open("RECORD_ID", "w") as f:
+                f.write(self.server.conn.record_id)
 
         self.wfile.write("<p>Record id: %s</p>\n" % conn.record_id)
 

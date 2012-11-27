@@ -31,10 +31,9 @@ from urllib import urlencode
 import xml.etree.ElementTree as ET
 
 from .datatypes import DataType
+from healthvaultlib.exceptions import _get_exception_class_for, HealthVaultHTTPException, HealthVaultException
 from .hvcrypto import HVCrypto
-from .xmlutils import (when_to_datetime, int_or_none, text_or_none, boolean_or_none, parse_weight,
-                       parse_device, elt_to_string, parse_exercise, parse_height, parse_sleep_session,
-                       pretty_xml, parse_blood_glucose, elt_as_string, parse_group)
+from .xmlutils import (   pretty_xml, elt_as_string, parse_group)
 
 logger = logging.getLogger(__name__)
 
@@ -62,19 +61,6 @@ def _msg_time():
     :rtype: string
     """
     return format_datetime(datetime.datetime.now())
-
-
-class HealthVaultException(Exception):
-    """This exception is raised for any error in the python-healthvault library.
-
-    It has a :py:attr:`code` attribute that'll be set to the
-    `HealthVault status code <http://msdn.microsoft.com/en-us/library/hh567902.aspx>`_,
-    if one is available. Otherwise it's None.
-
-    """
-    def __init__(self, *args, **kwargs):
-        self.code = kwargs.pop('code', None)
-        super(HealthVaultException, self).__init__(*args, **kwargs)
 
 
 class HealthVaultConn(object):
@@ -395,15 +381,17 @@ class HealthVaultConn(object):
         if response.status != 200:
             logger.error("Non-success HTTP response status from HealthVault.  Status=%d, message=%s" %
                          (response.status, response.reason))
-            raise HealthVaultException("Non-success HTTP response status from HealthVault.  Status=%d, message=%s" %
-                                       (response.status, response.reason))
+            raise HealthVaultHTTPException("Non-success HTTP response status from HealthVault.  Status=%d, message=%s" %
+                                       (response.status, response.reason),
+                                        code=response.status)
         body = response.read()
         tree = ET.fromstring(body)
         status = int(tree.find('status/code').text)
         if status != 0:
             msg = tree.find("status/error/message").text
             logger.error("HealthVault error. status=%d, message=%s, request=%s, response=%s" % (status, msg, pretty_xml(payload), pretty_xml(body)))
-            raise HealthVaultException(
+            exc_class = _get_exception_class_for(status)
+            raise exc_class(
                 "Non-success status from HealthVault API.  Status=%d, message=%s" % (status, msg),
                 code=status
             )

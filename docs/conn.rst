@@ -56,11 +56,15 @@ and the application can save it with that individual's local data.
 
 The `wctoken` will expire fairly quickly (less than an hour?) and the application needs to allow
 for that.  When it expires, some call to HealthVault will fail with an error 7,
-"The credential token has expired.". The application
+"The credential token has expired.", raising the exception `HealthVaultTokenExpiredException`.
+The application
 should repeat the original authorization process, redirecting the user using `authorization_url`
 and getting the `wctoken` on a subsequent request. However, in this case the application already
 knows the `record_id`. It should pass that `record_id` to `authorization_url` to force the
 user to authorize access to the same person's data, and provide it when constructing the
 new HealthVaultConn to save another network round-trip.
 
-FIXME: Experiment and find out which error happens when the wctoken expires.
+Another possibility is that the user has gone to HealthVault directly and removed the
+authorization for the application. In that case, HealthVault will return an error
+11, ACCESS_DENIED, raising `HealthVaultAccessDeniedException`. The solution is the same:
+repeat the original authorization process.
