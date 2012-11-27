@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name='python-healthvault',
-    version='0.1.0',
+    version='0.1.1',
     packages=['healthvaultlib'],
     url='https://github.com/orcasgit/python-healthvault',
     license='Apache 2.0',
