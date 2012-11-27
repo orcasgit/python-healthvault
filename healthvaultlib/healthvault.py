@@ -102,16 +102,56 @@ class HealthVaultConn(object):
     that this `HealthVaultConn` object is now accessing data
     for a different person.
 
-    :param string app_id: the application ID (a UUID)
+    When constructing a new `HealthVaultConn` for the first time, you will leave out `wctoken`,
+    `sharedsec`, `auth_token`, and `record_id` because they aren't known yet.
+
+    Once a `HealthVaultConn` has been constructed successfully, it will have established authentication
+    with HealthVault. You can save the sharedsec and auth_token attributes and re-use them when constructing
+    future `HealthVaultConn` objects to skip the original authentication call.
+
+    Once a `HealthVaultConn` has been successfully connected to a particular patient's data (`.connect`
+    called, or wctoken passed in the constructor successfully), you can
+    additionally save the `wctoken` and `record_id` attributes and re-use them when constructing
+    future `HealthVaultConn` objects that will access the same person's data. However, be careful
+    if the wctoken expires and you get a new one, it might be pointing at a different person's data
+    with a different record_id. When a wctoken is found to be not valid, it's safest to set the `record_id`
+    attribute to None or create a new `HealthVaultConn` without passing a record_id, so the new record_id
+    will be retrieved.
+
+    These parameters are related to your application and should not generally change:
+
+    :param string app_id: the application ID (UUID)
     :param string app_thumbprint: the thumbprint displayed in the ACC for the public key we're using
-    :param long public_key: the public key we're using
-    :param long private_key: the private key we're using
+        (40 hex digits)
+    :param long public_key: the public key we're using (a very long number)
+    :param long private_key: the private key we're using (a very long number)
     :param string server: (optional), the hostname of the server to connect to, defaults to
         "platform.healthvault-ppe.com", the pre-production US server
     :param string shell_server: (optional), the hostname of the shell redirect server to connect to, defaults to
         "account.healthvault-ppe.com", the pre-production US shell server
+
+    These parameters can be used to save re-establishing authentication with HealthVault, but need to
+    be saved from another object. One application can use these for all `HealthVaultConn` objects:
+
+    :param string sharedsec: a random string that HealthVaultConn generates if none is passed in. If you save
+       an auth_token, you need to save this with it and pass them both into any new HealthVaultConn that you
+       want to use them. (string containing a long integer, 20 chars or more)
+    :param string auth_token: a long, random-looking string given to us by HealthVault when we authenticate
+       our application with them. It's used along with the other cryptographic data in later calls. If you save
+       this, save the sharedsec that goes with it and pass them both into any new HealthVaultConn that you
+       want to use them.  (240 printable ASCII chars)
+
+    These parameters can be used to save re-establishing authorization for a particular patient's
+    data,  but need to be saved from another object. These are specific to accessing one person's
+    data:
+
     :param string wctoken: the token returned from APPAUTH. If not available, leave it out and call
-       :py:meth:`.connect(wctoken)` later.
+       :py:meth:`.connect(wctoken)` later.  (200 printable ASCII chars)
+    :param string record_id: if you already know the wctoken and have saved the corresponding record_id, you can
+       pass the record_id along with the wctoken to save a network call to look up the record_id.  Note that if
+       the wctoken is found to be invalid (probably expired), the record_id might not be correct when you get a
+       new wctoken, so you should set your HealthVaultConn.record_id back to None before getting the new wctoken.
+       (UUID)
 
     :raises: :py:exc:`HealthVaultException` if there's any problem connecting to HealthVault or getting authorized.
     """
@@ -122,7 +162,9 @@ class HealthVaultConn(object):
     This identifies uniquely the person whose data we are accessing.
     """
 
-    def __init__(self, app_id, app_thumbprint, public_key, private_key, server=None, shell_server=None, wctoken=None):
+    def __init__(self, app_id, app_thumbprint, public_key, private_key, server=None, shell_server=None,
+                 sharedsec=None, auth_token=None,
+                 wctoken=None, record_id=None):
         self.wctoken = wctoken
         self.app_id = app_id
         self.app_thumbprint = app_thumbprint
@@ -132,9 +174,9 @@ class HealthVaultConn(object):
         self.server = server or 'platform.healthvault-ppe.com'
         self.shell_server = shell_server or "account.healthvault-ppe.com"
 
-        self.sharedsec = str(randint(2 ** 64, 2 ** 65 - 1))
+        self.sharedsec = sharedsec or str(randint(2 ** 64, 2 ** 65 - 1))
 
-        self.record_id = None
+        self.record_id = record_id
 
         self.authorized = False
 
@@ -145,7 +187,7 @@ class HealthVaultConn(object):
 
         # We can get our auth token now, it's not specific to wctoken
         # This will catch it early if our keys are wrong or something like that
-        self.auth_token = self._get_auth_token()
+        self.auth_token = auth_token or self._get_auth_token()
 
         if wctoken:
             self.connect(wctoken)
@@ -170,7 +212,7 @@ class HealthVaultConn(object):
             or getting authorized.
         """
         self.wctoken = wctoken
-        self.record_id, self.person_id = self._get_record_id()
+        self.record_id = self._get_record_id()
         self.authorized = True
 
     def authorization_url(self, callback_url=None, record_id=None):
@@ -186,20 +228,24 @@ class HealthVaultConn(object):
             get back to the original page because their browser keeps redirecting
             them to HealthVault due to the cached redirect for that URL.
 
+        :param string record_id: Optionally request access to a particular person's
+            (patient's) data.  If this is not passed and this `HealthVaultConn` object
+            has a record_id associated with it, that will be used. (UUID)
+
         :param URL callback_url: The URL that the user will be redirected back to after
             they have finished interacting with HealthVault. It will have query
             parameters appended by HealthVault indicating whether the authorization was
             granted, and providing the wctoken value if so.  See also
-            :py:meth:`connect`.
-
-        :param string record_id: Optionally request access to a particular person's
-            (patient's) data.
+            :py:meth:`connect`.  **THIS ONLY WORKS WITH PRE-PRODUCTION HEALTHVAULT
+            SERVERS. PRODUCTION HEALTHVAULT SERVERS WILL ALWAYS REDIRECT TO THE
+            APPLICATIONS `ActionURL` AS CONFIGURED IN HEALTHVAULT.**
 
         See `APPAUTH <http://msdn.microsoft.com/en-us/library/ff803620.aspx#APPAUTH>`_.
         """
         d = {'appid': self.app_id}
         if callback_url is not None:
             d['redirect'] = callback_url
+        record_id = record_id or self.record_id
         if record_id is not None:
             d['extrecordid'] = record_id
         targetqs = urlencode(d)
@@ -214,12 +260,14 @@ class HealthVaultConn(object):
         with a `target` parameter of `SIGNOUT`.  During development only,
         a different URL may be used by passing it as `callback_url`.
 
-        *The callback_url parameter is only valid during development*. The production server will
+        **The callback_url parameter is only valid during development**. The production server will
         always redirect the user to the application's configured ActionURL.
         It might also fail the request if a callback URL is even passed.
 
         :param URL callback_url: The URL that the user will be redirected back to after
-            they have finished interacting with HealthVault.
+            they have finished interacting with HealthVault.   **THIS ONLY WORKS WITH
+            PRE-PRODUCTION HEALTHVAULT SERVERS. PRODUCTION HEALTHVAULT SERVERS WILL
+            ALWAYS REDIRECT TO THE APPLICATIONS `ActionURL` AS CONFIGURED IN HEALTHVAULT.**
 
         See `APPSIGNOUT <http://msdn.microsoft.com/en-us/library/ff803620.aspx#APPSIGNOUT>`_.
         """
@@ -291,22 +339,23 @@ class HealthVaultConn(object):
 
     def _get_record_id(self):
         """
-        Calls GetPersonInfo, returns (selected_record_id, person_id)
+        Calls GetPersonInfo, returns selected_record_id
+
+        If this `HealthVaultConn` already has a record_id, just returns that.
 
         Not part of the public API.
         """
+        if self.record_id:
+            return self.record_id
+
         (response, body, tree) = self._build_and_send_request("GetPersonInfo", "<info/>", use_record_id=False)
 
         record_id_elt = tree.find('{urn:com.microsoft.wc.methods.response.GetPersonInfo}info/person-info/selected-record-id')
         if record_id_elt is None:
             logger.error("No record ID in response.  response=%s" % body)
             raise HealthVaultException("selected record ID not found in HV response (%s)" % body)
-        person_id_elt = tree.find('{urn:com.microsoft.wc.methods.response.GetPersonInfo}info/person-info/person-id')
-        if person_id_elt is None:
-            logger.error("No person ID in response. Response=%s" % body)
-            raise HealthVaultException("person ID not found in HV response (%s)" % body)
 
-        return (record_id_elt.text, person_id_elt.text)
+        return record_id_elt.text
 
     def _send_request(self, payload):
         """
@@ -459,7 +508,7 @@ class HealthVaultConn(object):
         info = '<info>' + ''.join(groups) + '</info>'
 
         (response, body, tree) = self._build_and_send_request("GetThings", info)
-        logger.debug("get_things response body:\n%s", body)
+        #logger.debug("get_things response body:\n%s", body)
         info = tree.find('{urn:com.microsoft.wc.methods.response.GetThings}info')
         response = [parse_group(group) for group in info.findall('group')]
         return response

@@ -95,7 +95,6 @@ class Handler(BaseHTTPServer.BaseHTTPRequestHandler):
         conn = self.server.conn
 
         self.wfile.write("<p>Record id: %s</p>\n" % conn.record_id)
-        self.wfile.write("<p>Person id: %s</p>\n" % conn.person_id)
 
         try:
             alt_ids = conn.get_alternate_ids()

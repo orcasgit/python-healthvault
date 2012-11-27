@@ -12,6 +12,7 @@ Contents:
    :maxdepth: 2
 
    overview
+   conn
    keys
    api
    history
