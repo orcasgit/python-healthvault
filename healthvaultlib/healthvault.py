@@ -469,12 +469,16 @@ class HealthVaultConn(object):
         :param list requests: A list of dictionaries. Each dictionary must have a 'datatype' key whose value
             is one of the defined datatypes :py:class:`.datatypes.DataType`.  Optionally it can have
             'min_date' and/or 'max_date' keys whose values are Python datetimes. Not all data types make
-            sense to provide min_date or max_date with.
+            sense to provide min_date or max_date with.  Optionally it can also have a 'max' key whose
+            value is the integer maximum number of records to return.
+
+            Records are always sorted by effective date descending, so passing max=1 will return the
+            most recent record.
 
             Example::
 
                 from healthvaultlib.datatypes import DataType
-                batch_get([{'datatype': DataType.WEIGHT_MEASUREMENT},
+                batch_get([{'datatype': DataType.WEIGHT_MEASUREMENT, 'max': 1},
                            {'datatype': DataType.HEIGHT_MEASUREMENT, 'min_date': datetime.datetime(...)},
                            {'datatype': DataType.DEVICES}])
 
@@ -483,7 +487,7 @@ class HealthVaultConn(object):
 
             Example::
 
-                [what get_weight_measurements() would have returned,
+                [what get_weight_measurements(max=1) would have returned,
                  what get_height_measurements(min_date=...) would have returned,
                  what get_devices() would have returned]
         """
@@ -544,13 +548,14 @@ class HealthVaultConn(object):
         info = '<info><alternate-id>%s</alternate-id></info>' % idstring
         self._build_and_send_request("DisassociateAlternateId", info)
 
-    def _build_thing_group(self, datatype, min_date=None, max_date=None, filter=None):
+    def _build_thing_group(self, datatype, min_date=None, max_date=None, max=None, filter=None):
         """Return the <group>...</group> part of a GetThings request for this datatype
         and optional data parameters.
 
         :param string datatype: The UUID representing the data type to retrieve.
         :param datetime.datetime min_date: Only things with an effective datetime after this are returned.
         :param datetime.datetime max_date: Only things with an effective datetime before this are returned.
+        :param integer max: Maximum number of records to return.
         :param string filter: XML to be added to the filter section of the query to
            further limit the data returned.
 
@@ -565,7 +570,11 @@ class HealthVaultConn(object):
             filter += '<eff-date-min>' + format_datetime(min_date) + '</eff-date-min>'
         if max_date:
             filter += '<eff-date-max>' + format_datetime(max_date) + '</eff-date-max>'
-        return '<group>'\
+        if max is None:
+            grp_tag = '<group>'
+        else:
+            grp_tag = '<group max="%d">' % max
+        return grp_tag +\
                '<filter>'\
                '<type-id>{datatype}</type-id>'\
                '{filter}' \
@@ -573,7 +582,7 @@ class HealthVaultConn(object):
                '<format><section>core</section><xml/></format>'\
                '</group>'.format(datatype=datatype, filter=filter)
 
-    def get_things(self, hv_datatype, min_date=None, max_date=None, filter=None, debug=False):
+    def get_things(self, hv_datatype, min_date=None, max_date=None, max=None, filter=None, debug=False):
         """Call the get_things API to retrieve some things (data items).
 
         See also
@@ -582,6 +591,7 @@ class HealthVaultConn(object):
         :param string hv_datatype: The UUID representing the data type to retrieve.
         :param datetime.datetime min_date: Only things with an effective datetime after this are returned.
         :param datetime.datetime max_date: Only things with an effective datetime before this are returned.
+        :param integer max: Maximum number of records to return.
         :param string filter: XML to be added to the filter section of the query to
            further limit the data returned.
         :returns: ElementTree Element object containing the <wc:info> element of the response
@@ -594,7 +604,7 @@ class HealthVaultConn(object):
             yet been implemented here.
         """
 
-        info = '<info>' + self._build_thing_group(hv_datatype, min_date, max_date, filter) + '</info>'
+        info = '<info>' + self._build_thing_group(hv_datatype, min_date, max_date, max, filter) + '</info>'
 
         (response, body, tree) = self._build_and_send_request("GetThings", info)
         if debug:
@@ -620,7 +630,7 @@ class HealthVaultConn(object):
 
         return self.batch_get({'datatype': DataType.BASIC_DEMOGRAPHIC_DATA})[0]
 
-    def get_blood_glucose_measurements(self, min_date=None, max_date=None, debug=False):
+    def get_blood_glucose_measurements(self, min_date=None, max_date=None, max=None, debug=False):
         """Get `Blood Glucose Measurements
         <http://developer.healthvault.com/pages/types/type.aspx?id=879e7c04-4e8a-4707-9ad3-b054df467ce4>`_
 
@@ -628,9 +638,9 @@ class HealthVaultConn(object):
         :param datetime.datetime max_date: Only things with an effective datetime before this are returned.
         :returns: a list of dictionaries.
         """
-        return self.batch_get({'datatype': DataType.BLOOD_GLUCOSE_MEASUREMENT, 'min_date': min_date, 'max_date': max_date})[0]
+        return self.batch_get({'datatype': DataType.BLOOD_GLUCOSE_MEASUREMENT, 'min_date': min_date, 'max_date': max_date, 'max': max})[0]
 
-    def get_blood_pressure_measurements(self, min_date=None, max_date=None):
+    def get_blood_pressure_measurements(self, min_date=None, max_date=None, max=None):
         """Get `Blood Pressure measurements
         <http://developer.healthvault.com/pages/types/type.aspx?id=ca3c57f4-f4c1-4e15-be67-0a3caf5414ed>`_
 
@@ -658,9 +668,9 @@ class HealthVaultConn(object):
         :type max_date: datetime.datetime
         :raises: HealthVaultException if the request fails in some way.
         """
-        return self.batch_get({'datatype': DataType.BLOOD_PRESSURE_MEASUREMENTS, 'min_date': min_date, 'max_date': max_date})[0]
+        return self.batch_get({'datatype': DataType.BLOOD_PRESSURE_MEASUREMENTS, 'min_date': min_date, 'max_date': max_date, 'max': max})[0]
 
-    def get_height_measurements(self, min_date=None, max_date=None):
+    def get_height_measurements(self, min_date=None, max_date=None, max=None):
         """Get `Height measurements
         <http://developer.healthvault.com/pages/types/type.aspx?id=40750a6a-89b2-455c-bd8d-b420a4cb500b>`_
 
@@ -668,9 +678,9 @@ class HealthVaultConn(object):
         :param datetime.datetime max_date: Only things with an effective datetime before this are returned.
         :returns: list of dictionaries
         """
-        return self.batch_get({'datatype': DataType.HEIGHT_MEASUREMENTS, 'min_date': min_date, 'max_date': max_date})[0]
+        return self.batch_get({'datatype': DataType.HEIGHT_MEASUREMENTS, 'min_date': min_date, 'max_date': max_date, 'max': max})[0]
 
-    def get_weight_measurements(self, min_date=None, max_date=None):
+    def get_weight_measurements(self, min_date=None, max_date=None, max=None):
         """Get all `weight measurements
         <http://developer.healthvault.com/pages/types/type.aspx?id=3d34d87e-7fc1-4153-800f-f56592cb0d17>`_
 
@@ -688,7 +698,7 @@ class HealthVaultConn(object):
 
         :raises: HealthVaultException if the request fails in some way.
         """
-        return self.batch_get({'datatype': DataType.WEIGHT_MEASUREMENTS, 'min_date': min_date, 'max_date': max_date})[0]
+        return self.batch_get({'datatype': DataType.WEIGHT_MEASUREMENTS, 'min_date': min_date, 'max_date': max_date, 'max': max})[0]
 
     def get_devices(self):
         """Get `devices
@@ -726,7 +736,7 @@ class HealthVaultConn(object):
         """
         return self.batch_get({'datatype': DataType.DEVICES})[0]
 
-    def get_exercise(self, min_date=None, max_date=None):
+    def get_exercise(self, min_date=None, max_date=None, max=None):
         """Returns `exercise records
         <http://developer.healthvault.com/sdk/docs/urn.com.microsoft.wc.thing.exercise.2.html>`_
 
@@ -734,9 +744,9 @@ class HealthVaultConn(object):
         :param datetime.datetime max_date: Only things with an effective datetime before this are returned.
         :returns: list of dictionaries with exercise things
         """
-        return self.batch_get({'datatype': DataType.EXERCISE, 'min_date': min_date, 'max_date': max_date})[0]
+        return self.batch_get({'datatype': DataType.EXERCISE, 'min_date': min_date, 'max_date': max_date, 'max': max})[0]
 
-    def get_sleep_sessions(self, min_date=None, max_date=None):
+    def get_sleep_sessions(self, min_date=None, max_date=None, max=None):
         """Returns `sleep session records
         <http://developer.healthvault.com/pages/types/type.aspx?id=11c52484-7f1a-11db-aeac-87d355d89593>`_.
 
@@ -744,4 +754,4 @@ class HealthVaultConn(object):
         :param datetime.datetime max_date: Only things with an effective datetime before this are returned.
         :returns: list of dictionaries with sleep sessions.
         """
-        return self.batch_get({'datatype': DataType.SLEEP_SESSIONS, 'min_date': min_date, 'max_date': max_date})[0]
+        return self.batch_get({'datatype': DataType.SLEEP_SESSIONS, 'min_date': min_date, 'max_date': max_date, 'max': max})[0]
