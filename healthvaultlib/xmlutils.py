@@ -543,8 +543,12 @@ def parse_group(group):
     :param elementtree group: A `group` element.  Its type is inferred
     from the <thing><type-id>xxxxxxxx</type-id></thing> value.
     """
-
-    data_type = group.find('thing/type-id').text
+    if hasattr(group.find('thing/type-id'), 'text'):
+        data_type = group.find('thing/type-id').text
+    else:
+        # Something is wrong with this group
+        raise HealthVaultException("Group thing/type-id is missing in group \
+                                   response")
 
     # FIXME: should we replace all these if/elif clauses with a table-driven implementation?
     if data_type == DataType.BASIC_DEMOGRAPHIC_DATA:
@@ -583,7 +587,3 @@ def parse_group(group):
     else:
         # import here to avoid circular imports
         raise HealthVaultException("Unknown data type in group response: name='%s'" % data_type)
-
-
-
-
