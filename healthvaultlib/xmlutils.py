@@ -18,12 +18,14 @@ def pretty_xml(xml):
     dom = minidom.parseString(xml)
     return dom.toprettyxml()
 
+
 def elt_to_string(elt):
     """Given an ElementTree element object, return a string with nicely formatted XML"""
     s = elt_as_string(elt)
     # Now s has the XML as one long string, but that's hard to read.
     # This is inefficient, but we only use it when debugging.
     return pretty_xml(s)
+
 
 def elt_as_string(elt):
     et = ET.ElementTree(elt)
@@ -32,10 +34,12 @@ def elt_as_string(elt):
     s = s.getvalue()
     return s
 
+
 # Little utils to help pull data out of the XML
 def text_list(elt, xpath):
     """Return a list of the text values from the xpath (using findall)"""
     return [e.text for e in elt.findall(xpath)]
+
 
 def text_or_none(element, xpath):
     """If element.find(xpath) returns an element, return the .text from it;
@@ -43,15 +47,18 @@ def text_or_none(element, xpath):
     elt = element.find(xpath)
     return elt.text if elt is not None else None
 
+
 def int_or_none(element, xpath):
     """Like text_or_none but takes int() of the result"""
     elt = element.find(xpath)
     return int(elt.text) if elt is not None else None
 
+
 def float_or_none(element, xpath):
     """Like text_or_none but takes float() of the result"""
     elt = element.find(xpath)
     return float(elt.text) if elt is not None else None
+
 
 def boolean_or_none(element, xpath):
     """Like text_or_none but takes bool() of the result"""
@@ -59,6 +66,7 @@ def boolean_or_none(element, xpath):
     if text:
         return text.lower() == 'true'
     return None
+
 
 def parse_optional_item(elt, path, parser):
     """If elt.find(path) returns an item, apply parser to it and return the result.
@@ -92,6 +100,7 @@ def when_to_datetime(when):
     ints = [int(t) for t in texts]
     return datetime.datetime(*ints)
     #return datetime.datetime(*[int(when.find(path).text) for path in paths])
+
 
 # Parse specific MS HealthVault XML types and return dictionaries
 def parse_approximate_date(elt):
@@ -127,6 +136,7 @@ def parse_person(elt):
         type = parse_optional_item(elt, 'type', parse_codable_value),
     )
 
+
 def parse_name(elt):
     """Given an ElementTree element of type urn:com.microsoft.wc.thing.types:name
     (http://developer.healthvault.com/sdk/docs/urn.com.microsoft.wc.thing.types.name.1.html),
@@ -141,6 +151,7 @@ def parse_name(elt):
         suffix=parse_optional_item(elt, 'suffix', parse_codable_value),
     )
 
+
 def parse_codable_value(elt):
     """Given an ElementTree element of type  urn:com.microsoft.wc.thing.types:codable-value
     (http://developer.healthvault.com/sdk/docs/urn.com.microsoft.wc.thing.types.codable-value.1.html),
@@ -150,6 +161,7 @@ def parse_codable_value(elt):
         text = text_or_none(elt, 'text'),
         code = [parse_coded_value(e) for e in elt.findall('code')],
     )
+
 
 def parse_coded_value(elt):
     """
@@ -162,6 +174,7 @@ def parse_coded_value(elt):
         type = text_or_none(elt, 'type'),
         version = text_list(elt, 'version')
     )
+
 
 def parse_device(elt):
     """
@@ -177,6 +190,7 @@ def parse_device(elt):
         description=text_or_none(elt, 'description'),
     )
 
+
 def parse_contact(elt):
     """
     urn:com.microsoft.wc.thing.types:contact
@@ -188,6 +202,7 @@ def parse_contact(elt):
         phone = [parse_phone(e) for e in elt.findall('phone')],
         email = [parse_email(e) for e in elt.findall('email')],
     )
+
 
 def parse_address(elt):
     """
@@ -204,6 +219,7 @@ def parse_address(elt):
         country = text_or_none(elt, 'country'),
     )
 
+
 def parse_phone(elt):
     """
     urn:com.microsoft.wc.thing.types:phone
@@ -215,6 +231,7 @@ def parse_phone(elt):
         number=text_list(elt, 'number'),
     )
 
+
 def parse_email(elt):
     """
     urn:com.microsoft.wc.thing.types:email
@@ -225,6 +242,7 @@ def parse_email(elt):
         is_primary=boolean_or_none(elt, 'is-primary'),
         address=elt.find('address').text,
     )
+
 
 def parse_weight(elt):
     """
@@ -240,6 +258,7 @@ def parse_weight(elt):
         kg=float_or_none(elt, 'value/kg'),
         lbs=float_or_none(elt, "value/display[@units='lb']"),
     )
+
 
 def parse_exercise(elt):
     """
@@ -258,6 +277,7 @@ def parse_exercise(elt):
         segment=[parse_exercise_segment(e) for e in elt.findall('segment')],
     )
 
+
 def parse_structured_approximate_date_time(elt):
     """
     urn:com.microsoft.wc.dates:approx-date-time
@@ -267,6 +287,7 @@ def parse_structured_approximate_date_time(elt):
         structured=parse_structured_approximate_date(elt.find('structured')),
         descriptive=text_or_none(elt, 'descriptive'),
     )
+
 
 def parse_structured_approximate_date(elt):
     """
@@ -278,6 +299,7 @@ def parse_structured_approximate_date(elt):
         time=parse_optional_item(elt, 'time', parse_time),
         tz=parse_optional_item(elt, 'tz', parse_codable_value),
     )
+
 
 def parse_time(elt):
     """
@@ -291,6 +313,7 @@ def parse_time(elt):
     s = int_or_none(elt, 's') or 0
     milliseconds = int_or_none(elt, 'f') or 0
     return datetime.time(h, m, s, microsecond=1000 * milliseconds)
+
 
 def parse_exercise_segment(elt):
     """
@@ -306,6 +329,7 @@ def parse_exercise_segment(elt):
         detail=[parse_structured_name_value(e) for e in elt.findall('detail')],
     )
 
+
 def parse_structured_name_value(elt):
     """
     urn:com.microsoft.wc.thing.exercise:StructuredNameValue
@@ -315,6 +339,7 @@ def parse_structured_name_value(elt):
         name=parse_coded_value(elt.find('name')),
         value=parse_structured_measurement(elt.find('value')),
     )
+
 
 def parse_structured_measurement(elt):
     """
@@ -326,6 +351,7 @@ def parse_structured_measurement(elt):
         units=parse_optional_item(elt, 'units', parse_codable_value),
     )
 
+
 def parse_length_value(elt):
     """
     urn:com.microsoft.wc.thing.types:length-value
@@ -336,12 +362,14 @@ def parse_length_value(elt):
         display=parse_optional_item(elt, 'display', parse_display_value),
     )
 
+
 def parse_positive_double(elt):
     """
     urn:com.microsoft.wc.thing.types:positiveDouble
     http://developer.healthvault.com/sdk/docs/urn.com.microsoft.wc.thing.types.positiveDouble.1.html
     """
     return float(elt.text)
+
 
 def parse_display_value(elt):
     """
@@ -360,6 +388,7 @@ def parse_display_value(elt):
         display=elt.text,
     )
 
+
 def parse_height(elt):
     """
     urn:com.microsoft.wc.thing.height:height
@@ -369,6 +398,7 @@ def parse_height(elt):
         when=when_to_datetime(elt.find('when')),
         value=parse_length_value(elt.find('value')),
     )
+
 
 def parse_sleep_session(elt):
     """
@@ -385,6 +415,7 @@ def parse_sleep_session(elt):
         medications=[parse_codable_value(m) for m in elt.findall('medications')],
     )
 
+
 def parse_awakening(elt):
     """
     urn:com.microsoft.wc.thing.sjam:Awakening
@@ -395,6 +426,7 @@ def parse_awakening(elt):
         minutes=int_or_none(elt, 'minutes'),
     )
 
+
 def parse_subscription(elt):
     """
     https://platform.healthvault-ppe.com/platform/XSD/subscription.xsd
@@ -404,6 +436,7 @@ def parse_subscription(elt):
         record_item_changed_event=parse_record_item_changed_event(elt.find('record-item-changed-event')),
     )
 
+
 def parse_subscription_common(elt):
     return dict(
         id=text_or_none(elt, 'id'),
@@ -411,10 +444,12 @@ def parse_subscription_common(elt):
         notification_channel=parse_notification_channel(elt.find('notification-channel')),
     )
 
+
 def parse_notification_authentication_info(elt):
     return dict(
         hv_eventing_shared_key=parse_hv_eventing_shared_key(elt.find('hv-eventing-shared-key')),
     )
+
 
 def parse_hv_eventing_shared_key(elt):
     return dict(
@@ -422,20 +457,24 @@ def parse_hv_eventing_shared_key(elt):
         notification_key_version_id=text_or_none(elt, 'notification-key-version-id'),
     )
 
+
 def parse_notification_channel(elt):
     return dict(
         http_notification_channel=parse_optional_item(elt, 'http-notification-channel', parse_http_notification_channel),
     )
+
 
 def parse_http_notification_channel(elt):
     return dict(
         url=text_or_none(elt, 'url'),
     )
 
+
 def parse_record_item_changed_event(elt):
     return dict(
         filters=[parse_record_item_changed_event_filter(f) for f in elt.findall('filters/filter')]
     )
+
 
 def parse_record_item_changed_event_filter(elt):
     type_ids = elt.find('type-ids')
@@ -443,16 +482,19 @@ def parse_record_item_changed_event_filter(elt):
         type_ids=[item.text for item in type_ids.findall('type-id')]
     )
 
+
 def parse_notification(elt):
     return dict(
         common=parse_notification_common(elt.find('common')),
         record_change_notification=parse_optional_item(elt, 'record-change-notification', parse_record_change_notification),
     )
 
+
 def parse_notification_common(elt):
     return dict(
         subscription_id=text_or_none(elt, 'subscription-id'),
     )
+
 
 def parse_record_change_notification(elt):
     return dict(
@@ -461,8 +503,10 @@ def parse_record_change_notification(elt):
         things=[parse_notification_thing(t) for t in elt.findall('things/thing')],
     )
 
+
 def parse_notification_thing(elt):
     return text_or_none(elt, 'thing-id')
+
 
 def parse_blood_glucose(elt):
     # http://developer.healthvault.com/pages/types/type.aspx?id=879e7c04-4e8a-4707-9ad3-b054df467ce4
@@ -519,12 +563,14 @@ def parse_blood_glucose(elt):
         measurement_context=parse_optional_item(elt, 'measurement-context', parse_codable_value),
     )
 
+
 def parse_blood_glucose_value(elt):
     # http://developer.healthvault.com/pages/types/type.aspx?id=3e730686-781f-4616-aa0d-817bba8eb141#blood-glucose-value
     return dict(
         mmolperl=parse_positive_double(elt.find('mmolPerL')),
         display=parse_optional_item(elt, 'display', parse_display_value)
     )
+
 
 def parse_connect_request(elt):
     # https://platform.healthvault-ppe.com/platform/XSD/response-getauthorizedconnectrequests.xsd
@@ -535,6 +581,7 @@ def parse_connect_request(elt):
         external_id=text_or_none(elt, 'external-id'),
     )
 
+
 def parse_group(group):
     """Given an element that contains a <group>...</group>
     return whatever parsing that group as a response to the specific API
@@ -543,6 +590,10 @@ def parse_group(group):
     :param elementtree group: A `group` element.  Its type is inferred
     from the <thing><type-id>xxxxxxxx</type-id></thing> value.
     """
+
+    if not len(group.findall('thing')):
+        # No results
+        return []
 
     data_type = group.find('thing/type-id').text
 
@@ -583,7 +634,3 @@ def parse_group(group):
     else:
         # import here to avoid circular imports
         raise HealthVaultException("Unknown data type in group response: name='%s'" % data_type)
-
-
-
-
