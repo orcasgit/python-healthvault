@@ -1,7 +1,10 @@
+.idea
 *.pyc
-*.DS_Store
-*~
 docs/_build
-*.egg-info
-*.egg
 dist
+MANIFEST
+build
+python_healthvault.egg-info
+*.egg
+.tox
+.coverage

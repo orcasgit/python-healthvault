@@ -1,0 +1,7 @@
+python-healthvault
+==================
+
+python-healthvault is a Python library to assist Python programmers in communicating with
+Microsoft's HealthVault.
+
+The docs are in /docs. To build them, "cd docs; make html". The output will be in _build/html.

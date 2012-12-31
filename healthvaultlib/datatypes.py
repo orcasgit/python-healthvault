@@ -1,0 +1,11 @@
+class DataType(object):
+    """Encapsulate constants for HealthVault data type UUIDs."""
+
+    BASIC_DEMOGRAPHIC_DATA = "3b3e6b16-eb69-483c-8d7e-dfe116ae6092"
+    BLOOD_GLUCOSE_MEASUREMENT = "879e7c04-4e8a-4707-9ad3-b054df467ce4"
+    BLOOD_PRESSURE_MEASUREMENTS = "ca3c57f4-f4c1-4e15-be67-0a3caf5414ed"
+    DEVICES = "ef9cf8d5-6c0b-4292-997f-4047240bc7be"
+    EXERCISE = "85a21ddb-db20-4c65-8d30-33c899ccf612"
+    HEIGHT_MEASUREMENTS = "40750a6a-89b2-455c-bd8d-b420a4cb500b"
+    SLEEP_SESSIONS = "11c52484-7f1a-11db-aeac-87d355d89593"
+    WEIGHT_MEASUREMENTS = "3d34d87e-7fc1-4153-800f-f56592cb0d17"

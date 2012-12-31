@@ -1,9 +1,3 @@
-This code was originally derived from
-
-https://github.com/snosrap/pyhealthvault
-
-which has the following license:
-
 #The MIT License
 #Copyright (c) 2008 Applied Informatics, Inc.
 
@@ -24,3 +18,4 @@ which has the following license:
 #LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 #OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 #THE SOFTWARE.
+
