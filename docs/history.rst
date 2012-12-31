@@ -3,6 +3,10 @@
 Release History
 ===============
 
+0.1.3:
+    - Fix bug when no results are returned for one datatype.
+    - Fix warning when building documentation.
+
 0.1.1:
     Fix version in documentation.
 
