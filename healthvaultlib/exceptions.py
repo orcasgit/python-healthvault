@@ -11,7 +11,8 @@ def _get_exception_class_for(code):
     :returns: The HealthVaultException class or a subclass
     :rtype: class
     """
-    if code == HealthVaultStatus.CREDENTIAL_TOKEN_EXPIRED:
+    if code in (HealthVaultStatus.CREDENTIAL_TOKEN_EXPIRED,
+                HealthVaultStatus.AUTHENTICATED_SESSION_TOKEN_EXPIRED):
         return HealthVaultTokenExpiredException
     elif code == HealthVaultStatus.ACCESS_DENIED:
         return HealthVaultAccessDeniedException
