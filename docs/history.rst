@@ -3,6 +3,9 @@
 Release History
 ===============
 
+0.1.4:
+    - Raise token expired exception when authenticated session token expires.
+
 0.1.3:
     - Fix bug when no results are returned for one datatype.
     - Fix warning when building documentation.
