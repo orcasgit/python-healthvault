@@ -1,5 +1,8 @@
 from setuptools import setup
 
+required = [line for line in open('requirements/base.txt').read().split("\n")]
+required_dev = [line for line in open('requirements/test.txt').read().split("\n")]
+
 setup(
     name='python-healthvault',
     version='0.1.5',
@@ -9,7 +12,7 @@ setup(
     author='Dan Poirier and Caktus Group',
     author_email='dpoirier@caktusgroup.com',
     description='Python library to access Microsoft Healthvault',
-    install_requires=['pycrypto>=2.6', 'sphinx'],
+    install_requires=required,
     classifiers=[
         'Development Status :: 4 - Beta',
         'Intended Audience :: Developers',
@@ -18,5 +21,6 @@ setup(
         'Programming Language :: Python :: 2.7',
         'Topic :: Software Development :: Libraries :: Python Modules',
         ],
-    setup_requires=['nose>=1.0'],
+    test_suite='nose.collector',
+    tests_require=required_dev,
 )

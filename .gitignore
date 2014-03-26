@@ -8,3 +8,4 @@ python_healthvault.egg-info
 *.egg
 .tox
 .coverage
+*~

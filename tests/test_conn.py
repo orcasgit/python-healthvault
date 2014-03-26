@@ -1,6 +1,7 @@
 """Tests for HealthVaultConn"""
 
 import datetime
+import re
 import socket
 from unittest import TestCase
 import xml.etree.ElementTree as ET
@@ -167,29 +168,32 @@ class ConnTests(TestCase):
                     wctoken=None, server="6", shell_server="shell.server"
                 )
         url = c.authorization_url("http://ourown.server.com/with/some/parts/")
-        self.assertEqual(
-            'https://shell.server/redirect.aspx?targetqs=redirect%3Dhttp%253A%252F%252Fourown.server.com%252'
-            'Fwith%252Fsome%252Fparts%252F%26appid%3D123&target=APPAUTH',
-            url
+        self.assertIsNotNone(
+            re.compile('https://shell\.server/redirect\.aspx\?[{0}&{0}]'.format(
+                '(target=APPAUTH)|(targetqs={0}%26{0})'.format(
+                    '(redirect%3Dhttp%253A%252F%252Fourown\.server\.com%252Fwith%252Fsome%252Fparts%252F)|'
+                    '(appid%3D123)'))).match(url)
         )
         # callback URL is optional
         url = c.authorization_url()
-        self.assertEqual(
-            'https://shell.server/redirect.aspx?targetqs=appid%3D123&target=APPAUTH',
-            url
+        self.assertIsNotNone(
+            re.compile('https://shell\.server/redirect\.aspx\?[{0}&{0}]'.format(
+                '(targetqs=appid%3D123)|(target=APPAUTH)')).match(url)
         )
         # Can include record_id
         url = c.authorization_url(record_id="FooBar")
-        self.assertEqual(
-            'https://shell.server/redirect.aspx?targetqs=extrecordid%3DFooBar%26appid%3D123&target=APPAUTH',
-            url
+        self.assertIsNotNone(
+            re.compile('https://shell\.server/redirect\.aspx\?[{0}&{0}]'.format(
+                '(targetqs={0}%26{0})|(target=APPAUTH)'.format('(extrecordid%3DFooBar)|(appid%3D123)'))
+            ).match(url)
         )
         # Or both
         url = c.authorization_url("http://ourown.server.com/with/some/parts/", record_id="FooBar")
-        self.assertEqual(
-            'https://shell.server/redirect.aspx?targetqs=redirect%3Dhttp%253A%252F%252Fourown.server.com'
-            '%252Fwith%252Fsome%252Fparts%252F%26extrecordid%3DFooBar%26appid%3D123&target=APPAUTH',
-            url
+        self.assertIsNotNone(
+            re.compile('https://shell\.server/redirect\.aspx\?[{0}&{0}]'.format(
+                '(targetqs={0}%26{0}%26{0})|(target=APPAUTH)'.format(
+                    '(redirect%3Dhttp%253A%252F%252Fourown\.server\.com%252Fwith%252Fsome%252Fparts%252F)|'
+                    '(extrecordid%3DFooBar)|(appid%3D123)'))).match(url)
         )
 
     def test_deauthorization_url(self):
@@ -200,15 +204,17 @@ class ConnTests(TestCase):
             )
         c.auth_token = "FakeToken"
         url = c.deauthorization_url("http://ourown.server.com/with/some/parts/")
-        self.assertEqual(
-            'https://shell.server/redirect.aspx?targetqs=redirect%3Dhttp%253A%252F%252Fourown.server.com'
-            '%252Fwith%252Fsome%252Fparts%252F%26cred_token%3DFakeToken%26appid%3D123&target=APPSIGNOUT',
-            url)
+        self.assertIsNotNone(
+            re.compile('https://shell\.server/redirect\.aspx\?[{0}&{0}]'.format('(targetqs=redirect%3D'
+                'http%253A%252F%252Fourown\.server\.com%252Fwith%252Fsome%252Fparts%25'
+                '2F%26cred_token%3DFakeToken%26appid%3D123)|(target=APPSIGNOUT)')).match(url)
+        )
         # callback URL is optional
         url = c.deauthorization_url()
-        self.assertEqual(
-            'https://shell.server/redirect.aspx?targetqs=cred_token%3DFakeToken%26appid%3D123&target=APPSIGNOUT',
-            url
+        self.assertIsNotNone(
+            url,
+            'https://shell\.server/redirect\.aspx\?[{0}&{0}]'.format('(targetqs=cred_token%3D'
+                'FakeToken%26appid%3D123)|(target=APPSIGNOUT)')
         )
 
     def test_build_and_send_request(self):
