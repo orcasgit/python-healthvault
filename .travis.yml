@@ -3,5 +3,6 @@ python: 2.7
 env:
   - TOX_ENV=py27
   - TOX_ENV=docs
-install: pip install tox==1.7.0
-script: tox -e $TOX_ENV
+install:
+  - pip install coveralls tox
+script: tox -e $TOX_ENV -- --with-coverage
